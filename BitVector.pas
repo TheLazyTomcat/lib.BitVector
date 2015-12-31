@@ -23,13 +23,15 @@ type
     Function GetCapacity: Integer;
     procedure SetCapacity(Value: Integer);
   protected
+    procedure ShiftDown(Idx1,Idx2: Integer); virtual;
+    procedure ShiftUp(Idx1,Idx2: Integer); virtual;
     Function CheckIndex(Index: Integer): Boolean; virtual;
     procedure CommonInit; virtual;
     procedure ScanForSetCount; virtual;
     procedure DoOnChange; virtual;
   public
     constructor Create(Memory: Pointer; Count: Integer); overload;
-    constructor Create(InitialCapacity: Integer = 0); overload;
+    constructor Create(InitialCount: Integer = 0; InitialValue: Boolean = False); overload;
     destructor Destroy; override;
 
     procedure BeginChanging;
@@ -65,9 +67,14 @@ type
 
     procedure Assign(Memory: Pointer; Count: Integer); virtual; overload;
     procedure Assign(Vector: TBitVector); virtual; overload;
-    procedure AssignOR(Vector: TBitVector); virtual;
-    procedure AssignAND(Vector: TBitVector); virtual;
-    procedure AssignXOR(Vector: TBitVector); virtual;
+    procedure AssignOR(Memory: Pointer; Count: Integer); virtual; overload;
+    procedure AssignOR(Vector: TBitVector); virtual; overload;
+    procedure AssignAND(Memory: Pointer; Count: Integer); virtual; overload;
+    procedure AssignAND(Vector: TBitVector); virtual; overload;
+    procedure AssignXOR(Memory: Pointer; Count: Integer); virtual; overload;
+    procedure AssignXOR(Vector: TBitVector); virtual; overload;
+
+    Function Compare(Vector: TBitVector): Boolean; virtual;
 
     procedure Complement; virtual;
 
@@ -94,7 +101,7 @@ uses
 
 const
   AllocDeltaBits  = 32;
-  AllocDeltaBytes = AllocDeltaBits div 8;
+  AllocDeltaBytes = 4;
 
 
 //==============================================================================
@@ -180,6 +187,82 @@ end;
 
 //==============================================================================
 
+procedure TBitVector.ShiftDown(Idx1,Idx2: Integer);
+var
+  i:      Integer;
+  Temp:   UInt16;
+  Carry:  Boolean;
+begin
+If Idx2 > Idx1 then
+  begin
+    If (Idx2 shr 3) - (Idx1 shr 3) > 1 then
+      begin
+        // shift last byte and preserve shifted-out bit
+        Carry := GetBit_LL(Idx2 and not 7);
+        For i := (Idx2 and not 7) to Pred(Idx2) do
+          SetBit_LL(i,GetBit_LL(i + 1));
+        // shift whole bytes
+        For i := Pred(Idx2 shr 3) downto Succ(Idx1 shr 3) do
+          begin
+            If Carry then
+              Temp := UInt16(PByte(PtrUInt(fMemory) + PtrUInt(i))^) or $0100
+            else
+              Temp := UInt16(PByte(PtrUInt(fMemory) + PtrUInt(i))^) and $FEFF;
+            Carry := (Temp and 1) <> 0;
+            PByte(PtrUInt(fMemory) + PtrUInt(i))^ := Byte(Temp shr 1);
+          end;
+        // shift first byte and store carry
+        For i := Idx1 to Pred(Idx1 or 7) do
+          SetBit_LL(i,GetBit_LL(i + 1));
+        SetBit_LL(Idx1 or 7,Carry);
+      end
+    else
+      For i := Idx1 to Pred(Idx2) do
+        SetBit_LL(i,GetBit_LL(i + 1));
+  end
+else raise Exception.CreateFmt('TBitVector.ShiftDown: First index (%d) must be smaller or equal to the second index (%d).',[Idx1,Idx2]);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.ShiftUp(Idx1,Idx2: Integer);
+var
+  i:      Integer;
+  Temp:   UInt16;
+  Carry:  Boolean;
+begin
+If Idx2 > Idx1 then
+  begin
+    If (Idx2 shr 3) - (Idx1 shr 3) > 1 then
+      begin
+        // shift first byte and preserve shifted-out bit
+        Carry := GetBit_LL(Idx1 or 7);
+        For i := (Idx1 or 7) downto Succ(Idx1) do
+          SetBit_LL(i,GetBit_LL(i - 1));
+        // shift whole bytes
+        For i := Succ(Idx1 shr 3) to Pred(Idx2 shr 3) do
+          begin
+            If Carry then
+              Temp := (UInt16(PByte(PtrUInt(fMemory) + PtrUInt(i))^) shl 1) or 1
+            else
+              Temp := (UInt16(PByte(PtrUInt(fMemory) + PtrUInt(i))^) shl 1) and not 1;
+            Carry := (Temp and $100) <> 0;
+            PByte(PtrUInt(fMemory) + PtrUInt(i))^ := Byte(Temp);
+          end;
+        // shift last byte and store carry
+        For i := Idx2 downto Succ(Idx2 and not 7) do
+          SetBit_LL(i,GetBit_LL(i - 1));
+        SetBit_LL(Idx2 and not 7,Carry);
+      end
+    else
+      For i := Idx2 downto Succ(Idx1) do
+        SetBit_LL(i,GetBit_LL(i - 1));
+  end
+else raise Exception.CreateFmt('TBitVector.ShiftUp: First index (%d) must be smaller or equal to the second index (%d).',[Idx1,Idx2]);
+end;
+
+//------------------------------------------------------------------------------
+
 Function TBitVector.CheckIndex(Index: Integer): Boolean;
 begin
 Result := (Index >= 0) and (Index < fCount);
@@ -198,13 +281,40 @@ end;
 
 procedure TBitVector.ScanForSetCount;
 var
-  i:  Integer;
+  i:        Integer;
+  WorkPtr:  PByte;
+
+  Function CountBits(Buff: Byte; MaxBits: Byte = 8): Integer;
+  var
+    ii: Integer;
+  begin
+    Result := 0;
+    If MaxBits >= 8 then
+      case Buff of
+          0:  Exit; // do nothing, result is already 0
+        255:  Result := 8;
+      else
+        For ii := 0 to 7 do
+          If ((Buff shr ii) and 1) <> 0 then Inc(Result);
+      end
+    else
+      For ii := 0 to Pred(MaxBits) do
+        If ((Buff shr ii) and 1) <> 0 then Inc(Result);
+  end;
+
 begin
-{$message 'reimplement, optimize'}
 fSetCount := 0;
 If fCount > 0 then
-  For i := LowIndex to HighIndex do
-    If GetBit_LL(i) then Inc(fSetCount);
+  begin
+    WorkPtr := PByte(fMemory);
+    For i := 0 to Pred(fCount shr 3) do
+      begin
+        Inc(fSetCount,CountBits(WorkPtr^));
+        Inc(WorkPtr);
+      end;
+    If (fCount and 7) > 0 then
+      Inc(fSetCount,CountBits(WorkPtr^,fCount and 7));
+  end;
 end;
 
 //------------------------------------------------------------------------------
@@ -230,13 +340,17 @@ end;
 
 //------------------------------------------------------------------------------
 
-constructor TBitVector.Create(InitialCapacity: Integer = 0);
+constructor TBitVector.Create(InitialCount: Integer = 0; InitialValue: Boolean = False);
 begin
 inherited Create;
 fOwnsMemory := True;
-Capacity := InitialCapacity;
-fCount := 0;
-fSetCount := 0;
+Capacity := InitialCount;
+fCount := InitialCount;
+FillTo(InitialValue);
+If InitialValue then
+  fSetCount := fCount
+else
+  fSetCount := 0;
 CommonInit;
 end;
 
@@ -328,53 +442,60 @@ end;
 
 Function TBitVector.Add(Value: Boolean): Integer;
 begin
-Grow;
-Inc(fCount);
-SetBit_LL(HighIndex,Value);
-If Value then Inc(fSetCount);
-Result := HighIndex;
-DoOnChange;
+If fOwnsMemory then
+  begin
+    Grow;
+    Inc(fCount);
+    SetBit_LL(HighIndex,Value);
+    If Value then Inc(fSetCount);
+    Result := HighIndex;
+    DoOnChange;
+  end
+else raise Exception.Create('TBitVector.Add: Method not allowed for not owned memory.');
 end;
 
 //------------------------------------------------------------------------------
 
 procedure TBitVector.Insert(Index: Integer; Value: Boolean);
-var
-  i:  Integer;
 begin
-{$message 'reimplement, optimize'}
-If Index = fCount then
-  Add(Value)
-else
-  If CheckIndex(Index) then
-    begin
-      Grow;
-      Inc(fCount);
-      For i := Index to Pred(HighIndex) do
-        SetBit_LL(i + 1,GetBit_LL(i));
-      SetBit_LL(Index,Value);   
-      If Value then Inc(fSetCount);
-      DoOnChange;
-    end
-  else raise Exception.CreateFmt('TBitVector.Insert: Index (%d) out of bounds.',[Index]);
+If fOwnsMemory then
+  begin
+    If Index >= fCount then
+      Add(Value)
+    else
+      begin
+        If CheckIndex(Index) then
+          begin
+            Grow;
+            Inc(fCount);
+            ShiftUp(Index,HighIndex);
+            SetBit_LL(Index,Value);
+            If Value then Inc(fSetCount);
+            DoOnChange;
+          end
+        else raise Exception.CreateFmt('TBitVector.Insert: Index (%d) out of bounds.',[Index]);
+      end;
+  end
+else raise Exception.Create('TBitVector.Insert: Method not allowed for not owned memory.');
 end;
 
 //------------------------------------------------------------------------------
 
 procedure TBitVector.Delete(Index: Integer);
-var
-  i:  Integer;
 begin
-{$message 'reimplement, optimize'}
-If CheckIndex(Index) then
+If fOwnsMemory then
   begin
-    If GetBit_LL(Index) then Dec(fSetCount);
-    For i := Index to Pred(HighIndex) do
-      SetBit_LL(i,GetBit_LL(i + 1));
-    Dec(fCount);
-    DoOnChange;
+    If CheckIndex(Index) then
+      begin
+        If GetBit_LL(Index) then Dec(fSetCount);
+        If Index < HighIndex then
+          ShiftDown(Index,HighIndex);
+        Dec(fCount);
+        DoOnChange;
+      end
+    else raise Exception.CreateFmt('TBitVector.Delete: Index (%d) out of bounds.',[Index]);
   end
-else raise Exception.CreateFmt('TBitVector.Delete: Index (%d) out of bounds.',[Index]);
+else raise Exception.Create('TBitVector.Delete: Method not allowed for not owned memory.');
 end;
 
 //------------------------------------------------------------------------------
@@ -394,20 +515,16 @@ end;
 procedure TBitVector.Move(SrcIdx, DstIdx: Integer);
 var
   Value:  Boolean;
-  i:      Integer;
 begin
-{$message 'reimplement, optimize'}
 If CheckIndex(SrcIdx) and CheckIndex(DstIdx) then
   begin
     If SrcIdx <> DstIdx then
       begin
         Value := GetBit_LL(SrcIdx);
         If SrcIdx < DstIdx then
-          For i := SrcIdx to Pred(DstIdx) do
-            SetBit_LL(i,GetBit_LL(i + 1))
+          ShiftDown(SrcIdx,DstIdx)
         else
-          For i := SrcIdx downto Succ(DstIdx) do
-            SetBit_LL(i,GetBit_LL(i - 1));
+          ShiftUp(DstIdx,SrcIdx);
         SetBit_LL(DstIdx,Value);
         DoOnChange;
       end;
@@ -435,7 +552,7 @@ If fCount > 0 then
           PByte(PtrUInt(fMemory) + i)^ := 0;
         fSetCount := 0;
       end;
-    DoOnChange;  
+    DoOnChange;
   end;
 end;
 
@@ -443,21 +560,23 @@ end;
 
 procedure TBitVector.Clear;
 begin
-Fillto(False);
+fCount := 0;
+fSetCount := 0;
+DoOnChange;
 end;
 
 //------------------------------------------------------------------------------
 
 Function TBitVector.IsEmpty: Boolean;
 begin
-Result := (fSetCount = 0) and (fCount > 0);
+Result := (fCount > 0) and (fSetCount = 0);
 end;
 
 //------------------------------------------------------------------------------
 
 Function TBitVector.IsFull: Boolean;
 begin
-Result := (fSetCount = fCount) and (fCount > 0);
+Result := (fCount > 0) and (fSetCount = fCount);
 end;
 
 
