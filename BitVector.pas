@@ -52,10 +52,12 @@ type
     procedure Move(SrcIdx, DstIdx: Integer); virtual;
 
     procedure FillTo(Value: Boolean); virtual;
+    procedure Complement; virtual;
     procedure Clear; virtual;
 
     Function IsEmpty: Boolean; virtual;
     Function IsFull: Boolean; virtual;
+
 (*
     Function FirstSet: Integer; virtual;
     Function FirstClean: Integer; virtual;
@@ -75,8 +77,6 @@ type
     procedure AssignXOR(Vector: TBitVector); virtual; overload;
 
     Function Compare(Vector: TBitVector): Boolean; virtual;
-
-    procedure Complement; virtual;
 
     procedure SaveToStream(Stream: TStream); virtual;
     procedure LoadFromStream(Stream: TStream); virtual;
@@ -547,6 +547,23 @@ end;
 
 //------------------------------------------------------------------------------
 
+procedure TBitVector.Complement;
+var
+  i:  Integer;
+begin
+If fCount > 0 then
+  begin
+    For i := 0 to Pred(fCount div 8) do
+      PByte(PtrUInt(fMemory) + PtrUInt(i))^ := not PByte(PtrUInt(fMemory) + PtrUInt(i))^;
+    For i := (fCount and not 7) to Pred(fCount) do
+      SetBit_LL(i,not GetBit_LL(i));
+    fSetCount := fCount - fSetCount;
+    DoOnChange;
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
 procedure TBitVector.Clear;
 begin
 fCount := 0;
@@ -567,6 +584,5 @@ Function TBitVector.IsFull: Boolean;
 begin
 Result := (fCount > 0) and (fSetCount = fCount);
 end;
-
 
 end.
