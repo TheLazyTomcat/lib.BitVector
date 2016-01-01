@@ -172,7 +172,7 @@ If OwnsMemory then
     NewMemSize := Ceil(Value / AllocDeltaBits) * AllocDeltaBytes;
     If fMemSize <> NewMemSize then
       begin
-        fMemSize := NewMemsize;
+        fMemSize := NewMemSize;
         ReallocMem(fMemory,fMemSize);
         If Capacity < fCount then
           begin
@@ -346,11 +346,7 @@ inherited Create;
 fOwnsMemory := True;
 Capacity := InitialCount;
 fCount := InitialCount;
-FillTo(InitialValue);
-If InitialValue then
-  fSetCount := fCount
-else
-  fSetCount := 0;
+FillTo(InitialValue); // SetCout is set in this routine
 CommonInit;
 end;
 
@@ -536,22 +532,15 @@ end;
 
 procedure TBitVector.FillTo(Value: Boolean);
 var
-  i:  PtrUInt;
+  i:  Integer;
 begin
 If fCount > 0 then
   begin
-    If Value then
-      begin
-        For i := 0 to Pred(Ceil(fCount / 8)) do
-          PByte(PtrUInt(fMemory) + i)^ := $FF;
-        fSetCount := fCount;
-      end
-    else
-      begin
-        For i := 0 to Pred(Ceil(fCount / 8)) do
-          PByte(PtrUInt(fMemory) + i)^ := 0;
-        fSetCount := 0;
-      end;
+    For i := 0 to Pred(fCount div 8) do
+      PByte(PtrUInt(fMemory) + PtrUInt(i))^ := $FF * Ord(Value);
+    For i := (fCount and not 7) to Pred(fCount) do
+      SetBit_LL(i,Value);
+    fSetCount := fCount * Ord(Value);      
     DoOnChange;
   end;
 end;
