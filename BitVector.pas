@@ -20,9 +20,9 @@ type
     Function SetBit_LL(Index: Integer; Value: Boolean): Boolean;
     Function GetBit(Index: Integer): Boolean;
     procedure SetBit(Index: Integer; Value: Boolean);
-    Function GetCapacity: Integer;
-    procedure SetCapacity(Value: Integer);
   protected
+    Function GetCapacity: Integer;
+    procedure SetCapacity(Value: Integer);  
     procedure ShiftDown(Idx1,Idx2: Integer); virtual;
     procedure ShiftUp(Idx1,Idx2: Integer); virtual;
     Function CheckIndex(Index: Integer): Boolean; virtual;
@@ -62,10 +62,10 @@ type
     Function FirstClean: Integer; virtual;
     Function LastSet: Integer; virtual;
     Function LastClean: Integer; virtual;
-(*
+
     procedure Append(Memory: Pointer; Count: Integer); overload; virtual;
     procedure Append(Vector: TBitVector); overload; virtual;
-
+(*
     procedure Assign(Memory: Pointer; Count: Integer); virtual; overload;
     procedure Assign(Vector: TBitVector); virtual; overload;
     procedure AssignOR(Memory: Pointer; Count: Integer); virtual; overload;
@@ -153,7 +153,7 @@ If CheckIndex(Index) then
 else raise Exception.CreateFmt('TBitVector.SetBit: Index (%d) out of bounds.',[Index]);
 end;
 
-//------------------------------------------------------------------------------
+//==============================================================================
 
 Function TBitVector.GetCapacity: Integer;
 begin
@@ -184,7 +184,7 @@ If OwnsMemory then
 else raise Exception.Create('TBitVector.SetCapacity: Capacity cannot be changed if object does not own the memory.');
 end;
 
-//==============================================================================
+//------------------------------------------------------------------------------
 
 procedure TBitVector.ShiftDown(Idx1,Idx2: Integer);
 var
@@ -565,9 +565,13 @@ end;
 
 procedure TBitVector.Clear;
 begin
-fCount := 0;
-fSetCount := 0;
-DoOnChange;
+If fOwnsMemory then
+  begin
+    fCount := 0;
+    fSetCount := 0;
+    DoOnChange;
+  end
+else raise Exception.Create('TBitVector.Clear: Method not allowed for not owned memory.');
 end;
 
 //------------------------------------------------------------------------------
@@ -714,6 +718,63 @@ If fCount > 0 then
     Result := -1;
   end
 else Result := -1;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.Append(Memory: Pointer; Count: Integer);
+var
+  i:          Integer;
+  WorkByte:   Byte;
+  TempVector: TBitVector;
+begin
+If fOwnsMemory then
+  begin
+    If (fCount and 7) = 0 then
+      begin
+        Capacity := fCount + Count;
+        For i := 0 to Pred(Count div 8) do
+          PByte(PtrUInt(fMemory) + PtrUInt(fCount div 8) + PtrUInt(i))^ := PByte(PtrUInt(Memory) + PtrUInt(i))^;
+        WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
+        For i := 0 to Pred(Count - (Count and not 7)) do
+          SetBit_LL(fCount + (Count and not 7) + i,(WorkByte shr i) and 1 <> 0);
+        Inc(fCount,Count);
+        ScanForSetCount;
+        DoOnChange;
+      end
+    else
+      begin
+        TempVector := TBitVector.Create(Memory,Count);
+        try
+          Append(TempVector);
+        finally
+          TempVector.Free;
+        end;
+      end;
+  end
+else raise Exception.Create('TBitVector.Append: Method not allowed for not owned memory.');
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.Append(Vector: TBitVector);
+var
+  i:  Integer;
+begin
+If fOwnsMemory then
+  begin
+    If (fCount and 7) <> 0 then
+      begin
+        Capacity := fCount + Vector.Count;
+        For i := 0 to Vector.HighIndex do
+          SetBit_LL(fCount + i,Vector.GetBit_LL(i));  
+        Inc(fCount,Vector.Count);
+        ScanForSetCount;
+        DoOnChange;
+      end
+    else Append(Vector.Memory,Vector.Count);
+  end
+else raise Exception.Create('TBitVector.Append: Method not allowed for not owned memory.');
 end;
 
 end.
