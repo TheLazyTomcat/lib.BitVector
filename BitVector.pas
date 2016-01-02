@@ -65,24 +65,24 @@ type
 
     procedure Append(Memory: Pointer; Count: Integer); overload; virtual;
     procedure Append(Vector: TBitVector); overload; virtual;
-(*
-    procedure Assign(Memory: Pointer; Count: Integer); virtual; overload;
-    procedure Assign(Vector: TBitVector); virtual; overload;
-    procedure AssignOR(Memory: Pointer; Count: Integer); virtual; overload;
-    procedure AssignOR(Vector: TBitVector); virtual; overload;
-    procedure AssignAND(Memory: Pointer; Count: Integer); virtual; overload;
-    procedure AssignAND(Vector: TBitVector); virtual; overload;
-    procedure AssignXOR(Memory: Pointer; Count: Integer); virtual; overload;
-    procedure AssignXOR(Vector: TBitVector); virtual; overload;
 
-    Function Same(Vector: TBitVector): Boolean; virtual;
+    procedure Assign(Memory: Pointer; Count: Integer); overload; virtual;
+    procedure Assign(Vector: TBitVector); overload; virtual;
+//    procedure AssignOR(Memory: Pointer; Count: Integer); overload; virtual;
+//    procedure AssignOR(Vector: TBitVector); overload; virtual;
+//    procedure AssignAND(Memory: Pointer; Count: Integer); overload; virtual;
+//    procedure AssignAND(Vector: TBitVector); overload; virtual;
+//    procedure AssignXOR(Memory: Pointer; Count: Integer); overload; virtual;
+//    procedure AssignXOR(Vector: TBitVector); overload; virtual;
 
-    procedure SaveToStream(Stream: TStream); virtual;
-    procedure LoadFromStream(Stream: TStream); virtual;
-    procedure SaveToFile(const FileName: String); virtual;
-    procedure LoadFromFile(const FileName: String); virtual;
+//    Function Same(Vector: TBitVector): Boolean; virtual;
 
-*)
+//    procedure SaveToStream(Stream: TStream); virtual;
+//    procedure LoadFromStream(Stream: TStream); virtual;
+//    procedure SaveToFile(const FileName: String); virtual;
+//    procedure LoadFromFile(const FileName: String); virtual;
+
+
     property Bits[Index: Integer]: Boolean read GetBit write SetBit; default;
     property Memory: Pointer read fMemory;
   published
@@ -92,6 +92,8 @@ type
     property SetCount: Integer read fSetCount;
     property OnChange: TNotifyEvent read fOnChange write fOnChange;
   end;
+
+  TBitVectorStatic32 = class(TBitVector);
 
 implementation
 
@@ -733,11 +735,13 @@ If fOwnsMemory then
     If (fCount and 7) = 0 then
       begin
         Capacity := fCount + Count;
-        For i := 0 to Pred(Count div 8) do
-          PByte(PtrUInt(fMemory) + PtrUInt(fCount div 8) + PtrUInt(i))^ := PByte(PtrUInt(Memory) + PtrUInt(i))^;
-        WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
-        For i := 0 to Pred(Count - (Count and not 7)) do
-          SetBit_LL(fCount + (Count and not 7) + i,(WorkByte shr i) and 1 <> 0);
+        System.Move(Memory^,Pointer(PtrUInt(fMemory) + PtrUInt(fCount div 8))^,Count div 8);
+        If (Count and 7) <> 0 then
+          begin
+            WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
+            For i := 0 to Pred(Count - (Count and not 7)) do
+              SetBit_LL(fCount + (Count and not 7) + i,(WorkByte shr i) and 1 <> 0);
+          end;    
         Inc(fCount,Count);
         ScanForSetCount;
         DoOnChange;
@@ -775,6 +779,42 @@ If fOwnsMemory then
     else Append(Vector.Memory,Vector.Count);
   end
 else raise Exception.Create('TBitVector.Append: Method not allowed for not owned memory.');
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.Assign(Memory: Pointer; Count: Integer);
+var
+  i:        Integer;
+  WorkByte: Byte;
+begin
+If fOwnsMemory then
+  begin
+    BeginChanging;
+    try
+      Capacity := Count;
+      System.Move(Memory^,fMemory^,Count div 8);
+      If (Count and 7) <> 0 then
+        begin
+          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
+          For i := (Count and not 7) to Pred(Count) do
+            SetBit_LL(i,(WorkByte shr (i and 7)) and 1 <> 0);
+        end;
+      fCount := Count;
+      ScanForSetCount;
+      DoOnChange;
+    finally
+      EndChanging;
+    end;
+  end
+else raise Exception.Create('TBitVector.Assign: Method not allowed for not owned memory.');
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.Assign(Vector: TBitVector);
+begin
+Assign(Vector.Memory,Vector.Count);
 end;
 
 end.
