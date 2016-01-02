@@ -58,12 +58,11 @@ type
     Function IsEmpty: Boolean; virtual;
     Function IsFull: Boolean; virtual;
 
-(*
     Function FirstSet: Integer; virtual;
     Function FirstClean: Integer; virtual;
     Function LastSet: Integer; virtual;
     Function LastClean: Integer; virtual;
-
+(*
     procedure Append(Memory: Pointer; Count: Integer); overload; virtual;
     procedure Append(Vector: TBitVector); overload; virtual;
 
@@ -76,7 +75,7 @@ type
     procedure AssignXOR(Memory: Pointer; Count: Integer); virtual; overload;
     procedure AssignXOR(Vector: TBitVector); virtual; overload;
 
-    Function Compare(Vector: TBitVector): Boolean; virtual;
+    Function Same(Vector: TBitVector): Boolean; virtual;
 
     procedure SaveToStream(Stream: TStream); virtual;
     procedure LoadFromStream(Stream: TStream); virtual;
@@ -583,6 +582,138 @@ end;
 Function TBitVector.IsFull: Boolean;
 begin
 Result := (fCount > 0) and (fSetCount = fCount);
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVector.FirstSet: Integer;
+var
+  i:        Integer;
+  WorkByte: Byte;
+
+  Function ScanByte(Value: Byte): Integer;
+  begin
+    For Result := 0 to 7 do
+      If (Value shr Result) and 1 <> 0 then Exit;
+    raise Exception.Create('TBitVector.FirstSet.ScanByte: Operation not allowed.');
+  end;
+
+begin
+If fCount > 0 then
+  begin
+    For i := 0 to Pred(fCount div 8) do
+      begin
+        WorkByte := PByte(PtrUInt(fMemory) + PtrUInt(i))^;
+        If WorkByte <> 0 then
+          begin
+            Result := (i * 8) + ScanByte(WorkByte);
+            Exit;
+          end;
+      end;
+    For Result := (fCount and not 7) to Pred(fCount) do
+      If GetBit_LL(Result) then Exit;
+    Result := -1;
+  end
+else Result := -1;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVector.FirstClean: Integer;
+var
+  i:        Integer;
+  WorkByte: Byte;
+
+  Function ScanByte(Value: Byte): Integer;
+  begin
+    For Result := 0 to 7 do
+      If (Value shr Result) and 1 = 0 then Exit;
+    raise Exception.Create('TBitVector.FirstClean.ScanByte: Operation not allowed.');
+  end;
+
+begin
+If fCount > 0 then
+  begin
+    For i := 0 to Pred(fCount div 8) do
+      begin
+        WorkByte := PByte(PtrUInt(fMemory) + PtrUInt(i))^;
+        If WorkByte <> $FF then
+          begin
+            Result := (i * 8) + ScanByte(WorkByte);
+            Exit;
+          end;
+      end;
+    For Result := (fCount and not 7) to Pred(fCount) do
+      If not GetBit_LL(Result) then Exit;
+    Result := -1;
+  end
+else Result := -1;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVector.LastSet: Integer;
+var
+  i:        Integer;
+  WorkByte: Byte;
+
+  Function ScanByte(Value: Byte): Integer;
+  begin
+    For Result := 7 downto 0 do
+      If (Value shr Result) and 1 <> 0 then Exit;
+    raise Exception.Create('TBitVector.LastSet.ScanByte: Operation not allowed.');
+  end;
+
+begin
+If fCount > 0 then
+  begin
+    For Result := Pred(fCount) downto (fCount and not 7) do
+      If GetBit_LL(Result) then Exit;
+    For i := Pred(fCount div 8) downto 0 do
+      begin
+        WorkByte := PByte(PtrUInt(fMemory) + PtrUInt(i))^;
+        If WorkByte <> 0 then
+          begin
+            Result := (i * 8) + ScanByte(WorkByte);
+            Exit;
+          end;
+      end;
+    Result := -1;
+  end
+else Result := -1;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVector.LastClean: Integer;
+var
+  i:        Integer;
+  WorkByte: Byte;
+
+  Function ScanByte(Value: Byte): Integer;
+  begin
+    For Result := 7 downto 0 do
+      If (Value shr Result) and 1 = 0 then Exit;
+    raise Exception.Create('TBitVector.LastSet.ScanByte: Operation not allowed.');
+  end;
+
+begin
+If fCount > 0 then
+  begin
+    For Result := Pred(fCount) downto (fCount and not 7) do
+      If not GetBit_LL(Result) then Exit;
+    For i := Pred(fCount div 8) downto 0 do
+      begin
+        WorkByte := PByte(PtrUInt(fMemory) + PtrUInt(i))^;
+        If WorkByte <> $FF then
+          begin
+            Result := (i * 8) + ScanByte(WorkByte);
+            Exit;
+          end;
+      end;
+    Result := -1;
+  end
+else Result := -1;
 end;
 
 end.
