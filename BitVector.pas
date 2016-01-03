@@ -76,13 +76,12 @@ type
     procedure AssignXOR(Memory: Pointer; Count: Integer); overload; virtual;
     procedure AssignXOR(Vector: TBitVector); overload; virtual;
 
-//    Function Same(Vector: TBitVector): Boolean; virtual;
+    Function Same(Vector: TBitVector): Boolean; virtual;
 
-//    procedure SaveToStream(Stream: TStream); virtual;
-//    procedure LoadFromStream(Stream: TStream); virtual;
-//    procedure SaveToFile(const FileName: String); virtual;
-//    procedure LoadFromFile(const FileName: String); virtual;
-
+    procedure SaveToStream(Stream: TStream); virtual;
+    procedure LoadFromStream(Stream: TStream); virtual;
+    procedure SaveToFile(const FileName: String); virtual;
+    procedure LoadFromFile(const FileName: String); virtual;
 
     property Bits[Index: Integer]: Boolean read GetBit write SetBit; default;
     property Memory: Pointer read fMemory;
@@ -979,6 +978,80 @@ end;
 procedure TBitVector.AssignXOR(Vector: TBitVector);
 begin
 AssignXOR(Vector.Memory,Vector.Count);
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVector.Same(Vector: TBitVector): Boolean;
+var
+  i:  Integer;
+begin
+Result := False;
+If (fCount = Vector.Count) and (fPopCount = Vector.PopCount) then
+  begin
+    For i := 0 to Pred(fCount div 8) do
+      If PByte(PtrUInt(fMemory) + PtrUInt(i))^ <> PByte(PtrUInt(Vector.Memory) + PtrUInt(i))^ then Exit;
+    If (fCount and 7) <> 0 then
+      For i := (fCount and not 7) to Pred(fCount) do
+        If GetBit_LL(i) <> Vector[i] then Exit;
+    Result := True;
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.SaveToStream(Stream: TStream);
+var
+  TempByte: Byte;
+begin
+Stream.WriteBuffer(fMemory^,fCount div 8);
+If (fCount and 7) <> 0 then
+  begin
+    TempByte := PByte(PtrUInt(fMemory) + PtrUInt(fCount div 8))^ and (Byte($FF) shr (8 - (fCount and 7)));
+    Stream.WriteBuffer(TempByte,1);
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.LoadFromStream(Stream: TStream);
+begin
+If fOwnsMemory then
+  begin
+    Count := Integer((Stream.Size - Stream.Position) shl 3);
+    Stream.ReadBuffer(fMemory,fCount div 8);
+    ScanForPopCount;
+    DoOnChange;
+  end
+else raise Exception.Create('TBitVector.Assign: Method not allowed for not owned memory.');
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.SaveToFile(const FileName: String);
+var
+  FileStream: TFileStream;
+begin
+FileStream := TFileStream.Create(FileName,fmCreate or fmShareExclusive);
+try
+  SaveToStream(FileStream);
+finally
+  FileStream.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.LoadFromFile(const FileName: String);
+var
+  FileStream: TFileStream;
+begin
+FileStream := TFileStream.Create(FileName,fmOpenRead or fmShareDenyWrite);
+try
+  LoadFromStream(FileStream);
+finally
+  FileStream.Free;
+end;
 end;
 
 end.
