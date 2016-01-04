@@ -1,3 +1,19 @@
+{-------------------------------------------------------------------------------
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+-------------------------------------------------------------------------------}
+{===============================================================================
+
+  BitVector classes
+
+  ©František Milt 2016-01-04
+
+  Version 1.0 alpha (needs testing) 
+
+===============================================================================}
 unit BitVector;
 
 interface
@@ -6,6 +22,11 @@ uses
   Classes, AuxTypes;
 
 type
+{==============================================================================}
+{------------------------------------------------------------------------------}
+{                           TBitVector - declaration                           }
+{------------------------------------------------------------------------------}
+{==============================================================================}
   TBitVector = class(TObject)
   private
     fOwnsMemory:  Boolean;
@@ -34,41 +55,32 @@ type
     constructor Create(Memory: Pointer; Count: Integer); overload;
     constructor Create(InitialCount: Integer = 0; InitialValue: Boolean = False); overload;
     destructor Destroy; override;
-
     procedure BeginChanging;
     Function EndChanging: Integer;
-
     Function LowIndex: Integer; virtual;
     Function HighIndex: Integer; virtual;    
     Function Firts: Boolean; virtual;
     Function Last: Boolean; virtual;
-
     Function Grow(Force: Boolean = False): Integer; virtual;
     Function Shrink: Integer; virtual;
-
     Function Add(Value: Boolean): Integer; virtual;
     procedure Insert(Index: Integer; Value: Boolean); virtual;
     procedure Delete(Index: Integer); virtual;
     procedure Exchange(Index1, Index2: Integer); virtual;
     procedure Move(SrcIdx, DstIdx: Integer); virtual;
-
     procedure Fill(FromIdx, ToIdx: Integer; Value: Boolean); overload; virtual;
     procedure Fill(Value: Boolean); overload; virtual;
     procedure Complement(FromIdx, ToIdx: Integer); overload; virtual;    
     procedure Complement; overload; virtual;
     procedure Clear; virtual;
-
     Function IsEmpty: Boolean; virtual;
     Function IsFull: Boolean; virtual;
-
     Function FirstSet: Integer; virtual;
     Function FirstClean: Integer; virtual;
     Function LastSet: Integer; virtual;
     Function LastClean: Integer; virtual;
-
     procedure Append(Memory: Pointer; Count: Integer); overload; virtual;
     procedure Append(Vector: TBitVector); overload; virtual;
-
     procedure Assign(Memory: Pointer; Count: Integer); overload; virtual;
     procedure Assign(Vector: TBitVector); overload; virtual;
     procedure AssignOR(Memory: Pointer; Count: Integer); overload; virtual;
@@ -77,14 +89,11 @@ type
     procedure AssignAND(Vector: TBitVector); overload; virtual;
     procedure AssignXOR(Memory: Pointer; Count: Integer); overload; virtual;
     procedure AssignXOR(Vector: TBitVector); overload; virtual;
-
     Function Same(Vector: TBitVector): Boolean; virtual;
-
     procedure SaveToStream(Stream: TStream); virtual;
     procedure LoadFromStream(Stream: TStream); virtual;
     procedure SaveToFile(const FileName: String); virtual;
     procedure LoadFromFile(const FileName: String); virtual;
-
     property Bits[Index: Integer]: Boolean read GetBit write SetBit; default;
     property Memory: Pointer read fMemory;
   published
@@ -95,6 +104,11 @@ type
     property OnChange: TNotifyEvent read fOnChange write fOnChange;
   end;
 
+{==============================================================================}
+{------------------------------------------------------------------------------}
+{                        TBitVectorStatic - declaration                        }
+{------------------------------------------------------------------------------}
+{==============================================================================}
   TBitVectorStatic = class(TBitVector);
 
 implementation
@@ -106,8 +120,15 @@ const
   AllocDeltaBits  = 32;
   AllocDeltaBytes = 4;
 
+{==============================================================================}
+{------------------------------------------------------------------------------}
+{                         TBitVector - implementation                          }
+{------------------------------------------------------------------------------}
+{==============================================================================}
 
-//==============================================================================
+{==============================================================================}
+{   TBitVector - private methods                                               }
+{==============================================================================}
 
 Function TBitVector.GetBit_LL(Index: Integer): Boolean;
 begin
@@ -235,7 +256,9 @@ If OwnsMemory then
 else raise Exception.Create('TBitVector.SetCount: Count cannot be changed if object does not own the memory.');
 end;
 
-//==============================================================================
+{==============================================================================}
+{   TBitVector - protected methods                                             }
+{==============================================================================}
 
 procedure TBitVector.ShiftDown(Idx1,Idx2: Integer);
 var
@@ -377,7 +400,9 @@ fChanged := True;
 If (fChanging <= 0) and Assigned(fOnChange) then fOnChange(Self);
 end;
 
-//==============================================================================
+{==============================================================================}
+{   TBitVector - public methods                                                }
+{==============================================================================}
 
 constructor TBitVector.Create(Memory: Pointer; Count: Integer);
 begin
@@ -1109,5 +1134,12 @@ finally
   FileStream.Free;
 end;
 end;
+
+
+{==============================================================================}
+{------------------------------------------------------------------------------}
+{                      TBitVectorStatic - implementation                       }
+{------------------------------------------------------------------------------}
+{==============================================================================}
 
 end.
