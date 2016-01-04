@@ -18,6 +18,10 @@ unit BitVector;
 
 interface
 
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
 uses
   Classes, AuxTypes;
 
@@ -30,6 +34,7 @@ type
   TBitVector = class(TObject)
   private
     fOwnsMemory:  Boolean;
+    fStatic:      Boolean;
     fMemSize:     TMemSize;
     fMemory:      Pointer;
     fCount:       Integer;
@@ -42,18 +47,19 @@ type
     Function GetBit(Index: Integer): Boolean;
     procedure SetBit(Index: Integer; Value: Boolean);
     Function GetCapacity: Integer;
-    procedure SetCapacity(Value: Integer);
-    procedure SetCount(Value: Integer);
+    procedure SetCapacity(Value: Integer); virtual;
+    procedure SetCount(Value: Integer); virtual;
   protected
     procedure ShiftDown(Idx1,Idx2: Integer); virtual;
     procedure ShiftUp(Idx1,Idx2: Integer); virtual;
-    Function CheckIndex(Index: Integer; RaiseException: Boolean = False): Boolean; virtual;
+    Function MemoryEditable(MethodName: String = 'MemoryEditable'; RaiseException: Boolean = True): Boolean; virtual;
+    Function CheckIndex(Index: Integer; RaiseException: Boolean = False; MethodName: String = 'CheckIndex'): Boolean; virtual;
     procedure CommonInit; virtual;
     procedure ScanForPopCount; virtual;
     procedure DoOnChange; virtual;
   public
-    constructor Create(Memory: Pointer; Count: Integer); overload;
-    constructor Create(InitialCount: Integer = 0; InitialValue: Boolean = False); overload;
+    constructor Create(Memory: Pointer; Count: Integer); overload; virtual;
+    constructor Create(InitialCount: Integer = 0; InitialValue: Boolean = False); overload; virtual;
     destructor Destroy; override;
     procedure BeginChanging;
     Function EndChanging: Integer;
@@ -98,6 +104,7 @@ type
     property Memory: Pointer read fMemory;
   published
     property OwnsMemory: Boolean read fOwnsMemory;
+    property Static: Boolean read fStatic;
     property Capacity: Integer read GetCapacity write SetCapacity;
     property Count: Integer read fCount write SetCount;
     property PopCount: Integer read fPopCount;
@@ -109,7 +116,10 @@ type
 {                        TBitVectorStatic - declaration                        }
 {------------------------------------------------------------------------------}
 {==============================================================================}
-  TBitVectorStatic = class(TBitVector);
+  TBitVectorStatic = class(TBitVector)
+  protected
+    procedure CommonInit; override;
+  end;
 
 implementation
 
@@ -191,7 +201,7 @@ procedure TBitVector.SetCapacity(Value: Integer);
 var
   NewMemSize: PtrUInt;
 begin
-If OwnsMemory then
+If MemoryEditable('SetCapacity') then
   begin
     If Value >= 0 then
       begin
@@ -209,8 +219,7 @@ If OwnsMemory then
           end;
       end
     else raise Exception.Create('TBitVector.SetCapacity: Negative capacity not allowed.');
-  end
-else raise Exception.Create('TBitVector.SetCapacity: Capacity cannot be changed if object does not own the memory.');
+  end;
 end;
 
 //------------------------------------------------------------------------------
@@ -219,7 +228,7 @@ procedure TBitVector.SetCount(Value: Integer);
 var
   i:  Integer;
 begin
-If OwnsMemory then
+If MemoryEditable('SetCount') then
   begin
     If Value >= 0 then
       begin
@@ -252,8 +261,7 @@ If OwnsMemory then
           end;
       end
     else raise Exception.Create('TBitVector.SetCount: Negative count not allowed.');
-  end
-else raise Exception.Create('TBitVector.SetCount: Count cannot be changed if object does not own the memory.');
+  end;
 end;
 
 {==============================================================================}
@@ -336,17 +344,32 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function TBitVector.CheckIndex(Index: Integer; RaiseException: Boolean = False): Boolean;
+Function TBitVector.MemoryEditable(MethodName: String = 'MemoryEditable'; RaiseException: Boolean = True): Boolean;
+begin
+Result := fOwnsMemory and not fStatic;
+If RaiseException then
+  begin
+    If fStatic then
+      raise Exception.CreateFmt('TBitVector.%s: Method not allowed for a static vector.',[MethodName]);  
+    If not fOwnsMemory then
+      raise Exception.CreateFmt('TBitVector.%s: Method not allowed for not owned memory.',[MethodName]);
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVector.CheckIndex(Index: Integer; RaiseException: Boolean = False; MethodName: String = 'CheckIndex'): Boolean;
 begin
 Result := (Index >= 0) and (Index < fCount);
 If not Result and RaiseException then
-  raise Exception.CreateFmt('TBitVector.CheckIndex: Index (%d) out of bounds.',[Index]);
+  raise Exception.CreateFmt('TBitVector.%s: Index (%d) out of bounds.',[MethodName,Index]);
 end;
 
 //------------------------------------------------------------------------------
 
 procedure TBitVector.CommonInit;
 begin
+fStatic := False;
 fChanging := 0;
 fChanged := False;
 fOnChange := nil;
@@ -515,7 +538,7 @@ end;
 
 Function TBitVector.Add(Value: Boolean): Integer;
 begin
-If fOwnsMemory then
+If MemoryEditable('Add') then
   begin
     Grow;
     Inc(fCount);
@@ -524,14 +547,14 @@ If fOwnsMemory then
     Result := HighIndex;
     DoOnChange;
   end
-else raise Exception.Create('TBitVector.Add: Method not allowed for not owned memory.');
+else Result := -1;
 end;
 
 //------------------------------------------------------------------------------
 
 procedure TBitVector.Insert(Index: Integer; Value: Boolean);
 begin
-If fOwnsMemory then
+If MemoryEditable('Insert') then
   begin
     If Index >= fCount then
       Add(Value)
@@ -548,15 +571,14 @@ If fOwnsMemory then
           end
         else raise Exception.CreateFmt('TBitVector.Insert: Index (%d) out of bounds.',[Index]);
       end;
-  end
-else raise Exception.Create('TBitVector.Insert: Method not allowed for not owned memory.');
+  end;
 end;
 
 //------------------------------------------------------------------------------
 
 procedure TBitVector.Delete(Index: Integer);
 begin
-If fOwnsMemory then
+If MemoryEditable('Delete') then
   begin
     If CheckIndex(Index) then
       begin
@@ -567,15 +589,14 @@ If fOwnsMemory then
         DoOnChange;
       end
     else raise Exception.CreateFmt('TBitVector.Delete: Index (%d) out of bounds.',[Index]);
-  end
-else raise Exception.Create('TBitVector.Delete: Method not allowed for not owned memory.');
+  end;
 end;
 
 //------------------------------------------------------------------------------
 
 procedure TBitVector.Exchange(Index1, Index2: Integer);
 begin
-If CheckIndex(Index1,True) and CheckIndex(Index2,True) then
+If CheckIndex(Index1,True,'Exchange') and CheckIndex(Index2,True,'Exchange') then
   begin
     SetBit_LL(Index2,SetBit_LL(Index1,GetBit_LL(Index2)));
     DoOnChange;
@@ -588,7 +609,7 @@ procedure TBitVector.Move(SrcIdx, DstIdx: Integer);
 var
   Value:  Boolean;
 begin
-If CheckIndex(SrcIdx,True) and CheckIndex(DstIdx,True) then
+If CheckIndex(SrcIdx,True,'Move') and CheckIndex(DstIdx,True,'Move') then
   begin
     If SrcIdx <> DstIdx then
       begin
@@ -609,7 +630,7 @@ procedure TBitVector.Fill(FromIdx, ToIdx: Integer; Value: Boolean);
 var
   i:  Integer;
 begin
-If CheckIndex(FromIdx,True) and CheckIndex(ToIdx,True) then
+If CheckIndex(FromIdx,True,'Fill') and CheckIndex(ToIdx,True,'Fill') then
   begin
     If FromIdx > ToIdx then
       begin
@@ -653,7 +674,7 @@ procedure TBitVector.Complement(FromIdx, ToIdx: Integer);
 var
   i:  Integer;
 begin
-If CheckIndex(FromIdx,True) and CheckIndex(ToIdx,True) then
+If CheckIndex(FromIdx,True,'Complement') and CheckIndex(ToIdx,True,'Complement') then
   begin
     If FromIdx > ToIdx then
       begin
@@ -695,13 +716,12 @@ end;
 
 procedure TBitVector.Clear;
 begin
-If fOwnsMemory then
+If MemoryEditable('Clear') then
   begin
     fCount := 0;
     fPopCount := 0;
     DoOnChange;
-  end
-else raise Exception.Create('TBitVector.Clear: Method not allowed for not owned memory.');
+  end;
 end;
 
 //------------------------------------------------------------------------------
@@ -858,7 +878,7 @@ var
   WorkByte:   Byte;
   TempVector: TBitVector;
 begin
-If fOwnsMemory then
+If MemoryEditable('Append') then
   begin
     If (fCount and 7) = 0 then
       begin
@@ -883,8 +903,7 @@ If fOwnsMemory then
           TempVector.Free;
         end;
       end;
-  end
-else raise Exception.Create('TBitVector.Append: Method not allowed for not owned memory.');
+  end;
 end;
 
 //   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
@@ -893,7 +912,7 @@ procedure TBitVector.Append(Vector: TBitVector);
 var
   i:  Integer;
 begin
-If fOwnsMemory then
+If MemoryEditable('Append') then
   begin
     If (fCount and 7) <> 0 then
       begin
@@ -905,8 +924,7 @@ If fOwnsMemory then
         DoOnChange;
       end
     else Append(Vector.Memory,Vector.Count);
-  end
-else raise Exception.Create('TBitVector.Append: Method not allowed for not owned memory.');
+  end;
 end;
 
 //------------------------------------------------------------------------------
@@ -916,7 +934,7 @@ var
   i:        Integer;
   WorkByte: Byte;
 begin
-If fOwnsMemory then
+If MemoryEditable('Assign') then
   begin
     BeginChanging;
     try
@@ -934,8 +952,7 @@ If fOwnsMemory then
     finally
       EndChanging;
     end;
-  end
-else raise Exception.Create('TBitVector.Assign: Method not allowed for not owned memory.');
+  end;
 end;
 
 //   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
@@ -952,7 +969,7 @@ var
   i:        Integer;
   WorkByte: Byte;
 begin
-If fOwnsMemory then
+If MemoryEditable('AssignOR') then
   begin
     BeginChanging;
     try
@@ -971,8 +988,7 @@ If fOwnsMemory then
     finally
       EndChanging;
     end;
-  end
-else raise Exception.Create('TBitVector.AssignOR: Method not allowed for not owned memory.');
+  end;
 end;
 
 //   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
@@ -989,7 +1005,7 @@ var
   i:        Integer;
   WorkByte: Byte;
 begin
-If fOwnsMemory then
+If MemoryEditable('AssignAND') then
   begin
     BeginChanging;
     try
@@ -1013,8 +1029,7 @@ If fOwnsMemory then
     finally
       EndChanging;
     end;
-  end
-else raise Exception.Create('TBitVector.AssignAND: Method not allowed for not owned memory.');
+  end;
 end;
 
 //   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
@@ -1031,7 +1046,7 @@ var
   i:        Integer;
   WorkByte: Byte;
 begin
-If fOwnsMemory then
+If MemoryEditable('AssignXOR') then
   begin
     BeginChanging;
     try
@@ -1050,8 +1065,7 @@ If fOwnsMemory then
     finally
       EndChanging;
     end;
-  end
-else raise Exception.Create('TBitVector.AssignXOR: Method not allowed for not owned memory.');
+  end;
 end;
 
 //   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
@@ -1097,14 +1111,13 @@ end;
 
 procedure TBitVector.LoadFromStream(Stream: TStream);
 begin
-If fOwnsMemory then
+If MemoryEditable('LoadFromStream') then
   begin
     Count := Integer((Stream.Size - Stream.Position) shl 3);
     Stream.ReadBuffer(fMemory,fCount shr 3);
     ScanForPopCount;
     DoOnChange;
-  end
-else raise Exception.Create('TBitVector.Assign: Method not allowed for not owned memory.');
+  end;
 end;
 
 //------------------------------------------------------------------------------
@@ -1141,5 +1154,16 @@ end;
 {                      TBitVectorStatic - implementation                       }
 {------------------------------------------------------------------------------}
 {==============================================================================}
+
+{==============================================================================}
+{   TBitVectorStatic - protected methods                                       }
+{==============================================================================}
+
+procedure TBitVectorStatic.CommonInit;
+begin
+inherited;
+fStatic := True;
+end;
+
 
 end.
