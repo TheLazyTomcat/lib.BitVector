@@ -20,13 +20,13 @@ type
     Function SetBit_LL(Index: Integer; Value: Boolean): Boolean;
     Function GetBit(Index: Integer): Boolean;
     procedure SetBit(Index: Integer; Value: Boolean);
-  protected
     Function GetCapacity: Integer;
     procedure SetCapacity(Value: Integer);
     procedure SetCount(Value: Integer);
+  protected
     procedure ShiftDown(Idx1,Idx2: Integer); virtual;
     procedure ShiftUp(Idx1,Idx2: Integer); virtual;
-    Function CheckIndex(Index: Integer): Boolean; virtual;
+    Function CheckIndex(Index: Integer; RaiseException: Boolean = False): Boolean; virtual;
     procedure CommonInit; virtual;
     procedure ScanForPopCount; virtual;
     procedure DoOnChange; virtual;
@@ -52,8 +52,10 @@ type
     procedure Exchange(Index1, Index2: Integer); virtual;
     procedure Move(SrcIdx, DstIdx: Integer); virtual;
 
-    procedure FillTo(Value: Boolean); virtual;
-    procedure Complement; virtual;
+    procedure Fill(FromIdx, ToIdx: Integer; Value: Boolean); overload; virtual;
+    procedure Fill(Value: Boolean); overload; virtual;
+    procedure Complement(FromIdx, ToIdx: Integer); overload; virtual;    
+    procedure Complement; overload; virtual;
     procedure Clear; virtual;
 
     Function IsEmpty: Boolean; virtual;
@@ -93,7 +95,7 @@ type
     property OnChange: TNotifyEvent read fOnChange write fOnChange;
   end;
 
-  TBitVectorStatic32 = class(TBitVector);
+  TBitVectorStatic = class(TBitVector);
 
 implementation
 
@@ -155,7 +157,7 @@ If CheckIndex(Index) then
 else raise Exception.CreateFmt('TBitVector.SetBit: Index (%d) out of bounds.',[Index]);
 end;
 
-//==============================================================================
+//------------------------------------------------------------------------------
 
 Function TBitVector.GetCapacity: Integer;
 begin
@@ -210,7 +212,7 @@ If OwnsMemory then
                   If (fCount and 7) <> 0 then
                     For i := fCount to Min(Pred(Value),fCount or 7) do
                       SetBit_LL(i,False);
-                  For i := Ceil(fCount / 8) to Pred(Value div 8) do
+                  For i := Ceil(fCount / 8) to Pred(Value shr 3) do
                     PByte(PtrUInt(fMemory) + PtrUInt(i))^ := 0;
                   If ((Value and 7) <> 0) and ((Value and not 7) >= fCount) then
                     For i := (Value and not 7) to Pred(Value) do
@@ -233,7 +235,7 @@ If OwnsMemory then
 else raise Exception.Create('TBitVector.SetCount: Count cannot be changed if object does not own the memory.');
 end;
 
-//------------------------------------------------------------------------------
+//==============================================================================
 
 procedure TBitVector.ShiftDown(Idx1,Idx2: Integer);
 var
@@ -311,9 +313,11 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function TBitVector.CheckIndex(Index: Integer): Boolean;
+Function TBitVector.CheckIndex(Index: Integer; RaiseException: Boolean = False): Boolean;
 begin
 Result := (Index >= 0) and (Index < fCount);
+If not Result and RaiseException then
+  raise Exception.CreateFmt('TBitVector.CheckIndex: Index (%d) out of bounds.',[Index]);
 end;
 
 //------------------------------------------------------------------------------
@@ -386,7 +390,7 @@ ScanForPopCount;
 CommonInit;
 end;
 
-//------------------------------------------------------------------------------
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 constructor TBitVector.Create(InitialCount: Integer = 0; InitialValue: Boolean = False);
 begin
@@ -394,7 +398,7 @@ inherited Create;
 fOwnsMemory := True;
 Capacity := InitialCount;
 fCount := InitialCount;
-FillTo(InitialValue); // SetCout is set in this routine
+Fill(InitialValue);
 CommonInit;
 end;
 
@@ -546,12 +550,11 @@ end;
 
 procedure TBitVector.Exchange(Index1, Index2: Integer);
 begin
-If CheckIndex(Index1) and CheckIndex(Index2) then
+If CheckIndex(Index1,True) and CheckIndex(Index2,True) then
   begin
     SetBit_LL(Index2,SetBit_LL(Index1,GetBit_LL(Index2)));
     DoOnChange;
-  end
-else raise Exception.CreateFmt('TBitVector.Exchange: Index (%d, %d) out of bounds.',[Index1,Index2]);
+  end;
 end;
 
 //------------------------------------------------------------------------------
@@ -560,7 +563,7 @@ procedure TBitVector.Move(SrcIdx, DstIdx: Integer);
 var
   Value:  Boolean;
 begin
-If CheckIndex(SrcIdx) and CheckIndex(DstIdx) then
+If CheckIndex(SrcIdx,True) and CheckIndex(DstIdx,True) then
   begin
     If SrcIdx <> DstIdx then
       begin
@@ -572,19 +575,45 @@ If CheckIndex(SrcIdx) and CheckIndex(DstIdx) then
         SetBit_LL(DstIdx,Value);
         DoOnChange;
       end;
-  end
-else raise Exception.CreateFmt('TBitVector.Move: Index (%d, %d) out of bounds.',[SrcIdx,DstIdx]);
+  end;
 end;
 
 //------------------------------------------------------------------------------
 
-procedure TBitVector.FillTo(Value: Boolean);
+procedure TBitVector.Fill(FromIdx, ToIdx: Integer; Value: Boolean);
+var
+  i:  Integer;
+begin
+If CheckIndex(FromIdx,True) and CheckIndex(ToIdx,True) then
+  begin
+    If FromIdx > ToIdx then
+      begin
+        i := FromIdx;
+        FromIdx := ToIdx;
+        ToIdx := i;
+      end;
+    If ((FromIdx and 7) <> 0) or ((ToIdx - FromIdx) < 7) then
+      For i := FromIdx to Min(ToIdx,FromIdx or 7) do
+        SetBit_LL(i,Value);
+    For i := Ceil(FromIdx / 8) to Pred(Succ(ToIdx) shr 3) do
+      PByte(PtrUInt(fMemory) + PtrUInt(i))^ := Ord(Value) * $FF;
+    If ((ToIdx and 7) < 7) and ((ToIdx and not 7) > FromIdx) then
+      For i := (ToIdx and not 7) to ToIdx do
+        SetBit_LL(i,Value);
+    ScanForPopCount;
+    DoOnChange;
+  end;
+end;
+
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
+
+procedure TBitVector.Fill(Value: Boolean);
 var
   i:  Integer;
 begin
 If fCount > 0 then
   begin
-    For i := 0 to Pred(fCount div 8) do
+    For i := 0 to Pred(fCount shr 3) do
       PByte(PtrUInt(fMemory) + PtrUInt(i))^ := $FF * Ord(Value);
     For i := (fCount and not 7) to Pred(fCount) do
       SetBit_LL(i,Value);
@@ -595,13 +624,40 @@ end;
 
 //------------------------------------------------------------------------------
 
+procedure TBitVector.Complement(FromIdx, ToIdx: Integer);
+var
+  i:  Integer;
+begin
+If CheckIndex(FromIdx,True) and CheckIndex(ToIdx,True) then
+  begin
+    If FromIdx > ToIdx then
+      begin
+        i := FromIdx;
+        FromIdx := ToIdx;
+        ToIdx := i;
+      end;
+    If ((FromIdx and 7) <> 0) or ((ToIdx - FromIdx) < 7) then
+      For i := FromIdx to Min(ToIdx,FromIdx or 7) do
+        SetBit_LL(i,not GetBit_LL(i));
+    For i := Ceil(FromIdx / 8) to Pred(Succ(ToIdx) shr 3) do
+      PByte(PtrUInt(fMemory) + PtrUInt(i))^ := not PByte(PtrUInt(fMemory) + PtrUInt(i))^;
+    If ((ToIdx and 7) < 7) and ((ToIdx and not 7) > FromIdx) then
+      For i := (ToIdx and not 7) to ToIdx do
+        SetBit_LL(i,not GetBit_LL(i));
+    ScanForPopCount;
+    DoOnChange;
+  end;
+end;
+
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
+
 procedure TBitVector.Complement;
 var
   i:  Integer;
 begin
 If fCount > 0 then
   begin
-    For i := 0 to Pred(fCount div 8) do
+    For i := 0 to Pred(fCount shr 3) do
       PByte(PtrUInt(fMemory) + PtrUInt(i))^ := not PByte(PtrUInt(fMemory) + PtrUInt(i))^;
     For i := (fCount and not 7) to Pred(fCount) do
       SetBit_LL(i,not GetBit_LL(i));
@@ -654,7 +710,7 @@ var
 begin
 If fCount > 0 then
   begin
-    For i := 0 to Pred(fCount div 8) do
+    For i := 0 to Pred(fCount shr 3) do
       begin
         WorkByte := PByte(PtrUInt(fMemory) + PtrUInt(i))^;
         If WorkByte <> 0 then
@@ -687,7 +743,7 @@ var
 begin
 If fCount > 0 then
   begin
-    For i := 0 to Pred(fCount div 8) do
+    For i := 0 to Pred(fCount shr 3) do
       begin
         WorkByte := PByte(PtrUInt(fMemory) + PtrUInt(i))^;
         If WorkByte <> $FF then
@@ -722,7 +778,7 @@ If fCount > 0 then
   begin
     For Result := Pred(fCount) downto (fCount and not 7) do
       If GetBit_LL(Result) then Exit;
-    For i := Pred(fCount div 8) downto 0 do
+    For i := Pred(fCount shr 3) downto 0 do
       begin
         WorkByte := PByte(PtrUInt(fMemory) + PtrUInt(i))^;
         If WorkByte <> 0 then
@@ -755,7 +811,7 @@ If fCount > 0 then
   begin
     For Result := Pred(fCount) downto (fCount and not 7) do
       If not GetBit_LL(Result) then Exit;
-    For i := Pred(fCount div 8) downto 0 do
+    For i := Pred(fCount shr 3) downto 0 do
       begin
         WorkByte := PByte(PtrUInt(fMemory) + PtrUInt(i))^;
         If WorkByte <> $FF then
@@ -782,10 +838,10 @@ If fOwnsMemory then
     If (fCount and 7) = 0 then
       begin
         Capacity := fCount + Count;
-        System.Move(Memory^,Pointer(PtrUInt(fMemory) + PtrUInt(fCount div 8))^,Count div 8);
+        System.Move(Memory^,Pointer(PtrUInt(fMemory) + PtrUInt(fCount shr 3))^,Count shr 3);
         If (Count and 7) <> 0 then
           begin
-            WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
+            WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^;
             For i := 0 to Pred(Count - (Count and not 7)) do
               SetBit_LL(fCount + (Count and not 7) + i,(WorkByte shr i) and 1 <> 0);
           end;    
@@ -806,7 +862,7 @@ If fOwnsMemory then
 else raise Exception.Create('TBitVector.Append: Method not allowed for not owned memory.');
 end;
 
-//------------------------------------------------------------------------------
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 procedure TBitVector.Append(Vector: TBitVector);
 var
@@ -840,10 +896,10 @@ If fOwnsMemory then
     BeginChanging;
     try
       Capacity := Count;
-      System.Move(Memory^,fMemory^,Count div 8);
+      System.Move(Memory^,fMemory^,Count shr 3);
       If (Count and 7) <> 0 then
         begin
-          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
+          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^;
           For i := (Count and not 7) to Pred(Count) do
             SetBit_LL(i,(WorkByte shr (i and 7)) and 1 <> 0);
         end;
@@ -857,7 +913,7 @@ If fOwnsMemory then
 else raise Exception.Create('TBitVector.Assign: Method not allowed for not owned memory.');
 end;
 
-//------------------------------------------------------------------------------
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 procedure TBitVector.Assign(Vector: TBitVector);
 begin
@@ -876,12 +932,12 @@ If fOwnsMemory then
     BeginChanging;
     try
       If Count > fCount then Self.Count := Count;
-      For i := 0 to Pred(Count div 8) do
+      For i := 0 to Pred(Count shr 3) do
         PByte(PtrUInt(fMemory) + PtrUInt(i))^ := PByte(PtrUInt(fMemory) + PtrUInt(i))^ or
                                                  PByte(PtrUInt(Memory) + PtrUInt(i))^;
       If (Count and 7) <> 0 then
         begin
-          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
+          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^;
           For i := (Count and not 7) to Pred(Count) do
             SetBit_LL(i,GetBit_LL(i) or ((WorkByte shr (i and 7)) and 1 <> 0));
         end;
@@ -894,7 +950,7 @@ If fOwnsMemory then
 else raise Exception.Create('TBitVector.AssignOR: Method not allowed for not owned memory.');
 end;
 
-//------------------------------------------------------------------------------
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 procedure TBitVector.AssignOR(Vector: TBitVector);
 begin
@@ -914,16 +970,16 @@ If fOwnsMemory then
     try
       If Count > fCount then
         begin
-          Complement;
+          i := fCount;
           Self.Count := Count;
-          Complement;
+          Fill(i,Pred(fCount),True);
         end;
-      For i := 0 to Pred(Count div 8) do
+      For i := 0 to Pred(Count shr 3) do
         PByte(PtrUInt(fMemory) + PtrUInt(i))^ := PByte(PtrUInt(fMemory) + PtrUInt(i))^ and 
                                                  PByte(PtrUInt(Memory) + PtrUInt(i))^;
       If (Count and 7) <> 0 then
         begin
-          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
+          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^;
           For i := (Count and not 7) to Pred(Count) do
             SetBit_LL(i,GetBit_LL(i) and ((WorkByte shr (i and 7)) and 1 <> 0));
         end;
@@ -936,7 +992,7 @@ If fOwnsMemory then
 else raise Exception.Create('TBitVector.AssignAND: Method not allowed for not owned memory.');
 end;
 
-//------------------------------------------------------------------------------
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 procedure TBitVector.AssignAND(Vector: TBitVector);
 begin
@@ -955,12 +1011,12 @@ If fOwnsMemory then
     BeginChanging;
     try
       If Count > fCount then Self.Count := Count;
-      For i := 0 to Pred(Count div 8) do
+      For i := 0 to Pred(Count shr 3) do
         PByte(PtrUInt(fMemory) + PtrUInt(i))^ := PByte(PtrUInt(fMemory) + PtrUInt(i))^ xor
                                                  PByte(PtrUInt(Memory) + PtrUInt(i))^;
       If (Count and 7) <> 0 then
         begin
-          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count div 8))^;
+          WorkByte := PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^;
           For i := (Count and not 7) to Pred(Count) do
             SetBit_LL(i,GetBit_LL(i) xor ((WorkByte shr (i and 7)) and 1 <> 0));
         end;
@@ -973,7 +1029,7 @@ If fOwnsMemory then
 else raise Exception.Create('TBitVector.AssignXOR: Method not allowed for not owned memory.');
 end;
 
-//------------------------------------------------------------------------------
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
 
 procedure TBitVector.AssignXOR(Vector: TBitVector);
 begin
@@ -989,7 +1045,7 @@ begin
 Result := False;
 If (fCount = Vector.Count) and (fPopCount = Vector.PopCount) then
   begin
-    For i := 0 to Pred(fCount div 8) do
+    For i := 0 to Pred(fCount shr 3) do
       If PByte(PtrUInt(fMemory) + PtrUInt(i))^ <> PByte(PtrUInt(Vector.Memory) + PtrUInt(i))^ then Exit;
     If (fCount and 7) <> 0 then
       For i := (fCount and not 7) to Pred(fCount) do
@@ -1004,10 +1060,10 @@ procedure TBitVector.SaveToStream(Stream: TStream);
 var
   TempByte: Byte;
 begin
-Stream.WriteBuffer(fMemory^,fCount div 8);
+Stream.WriteBuffer(fMemory^,fCount shr 3);
 If (fCount and 7) <> 0 then
   begin
-    TempByte := PByte(PtrUInt(fMemory) + PtrUInt(fCount div 8))^ and (Byte($FF) shr (8 - (fCount and 7)));
+    TempByte := PByte(PtrUInt(fMemory) + PtrUInt(fCount shr 3))^ and (Byte($FF) shr (8 - (fCount and 7)));
     Stream.WriteBuffer(TempByte,1);
   end;
 end;
@@ -1019,7 +1075,7 @@ begin
 If fOwnsMemory then
   begin
     Count := Integer((Stream.Size - Stream.Position) shl 3);
-    Stream.ReadBuffer(fMemory,fCount div 8);
+    Stream.ReadBuffer(fMemory,fCount shr 3);
     ScanForPopCount;
     DoOnChange;
   end
