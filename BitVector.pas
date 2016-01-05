@@ -79,6 +79,7 @@ type
     procedure Complement(FromIdx, ToIdx: Integer); overload; virtual;    
     procedure Complement; overload; virtual;
     procedure Clear; virtual;
+    procedure Reverse; virtual;
     Function IsEmpty: Boolean; virtual;
     Function IsFull: Boolean; virtual;
     Function FirstSet: Integer; virtual;
@@ -744,6 +745,20 @@ If MemoryEditable('Clear') then
     fCount := 0;
     fPopCount := 0;
     DoOnChange;
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.Reverse;
+var
+  i:  Integer;
+begin
+If fCount > 1 then
+  begin
+    For i := 0 to Pred(fCount shr 1) do
+      SetBit_LL(i,SetBit_LL(Pred(fCount) - i,GetBit_LL(i)));
+    DoOnChange;  
   end;
 end;
 
