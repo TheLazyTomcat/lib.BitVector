@@ -9,7 +9,7 @@
 
   BitVector classes
 
-  ©František Milt 2016-01-04
+  ©František Milt 2016-01-05
 
   Version 1.0 alpha (needs testing) 
 
@@ -121,6 +121,21 @@ type
     procedure CommonInit; override;
   end;
 
+{==============================================================================}
+{------------------------------------------------------------------------------}
+{                       TBitVectorStatic32 - declaration                       }
+{------------------------------------------------------------------------------}
+{==============================================================================}
+  TBitVectorStatic32 = class(TBitVectorStatic)
+  public
+    constructor Create(Memory: Pointer; Count: Integer); overload; override;
+    constructor Create(InitialCount: Integer = 0; InitialValue: Boolean = False); overload; override;
+    Function FirstSet: Integer; override;
+    Function FirstClean: Integer; override;
+    Function LastSet: Integer; override;
+    Function LastClean: Integer; override;
+  end;
+
 implementation
 
 uses
@@ -129,6 +144,14 @@ uses
 const
   AllocDeltaBits  = 32;
   AllocDeltaBytes = 4;
+
+{$IFDEF ENDIAN_BIG}
+Function SwapEndian(Value: UInt32): UInt32;
+begin
+Result := UInt32((Value and $000000FF shl 24) or (Value and $0000FF00 shl 8) or
+                 (Value and $00FF0000 shr 8) or (Value and $FF000000 shr 24));
+end;
+{$ENDIF}
 
 {==============================================================================}
 {------------------------------------------------------------------------------}
@@ -1165,5 +1188,160 @@ inherited;
 fStatic := True;
 end;
 
+{==============================================================================}
+{------------------------------------------------------------------------------}
+{                     TBitVectorStatic32 - implementation                      }
+{------------------------------------------------------------------------------}
+{==============================================================================}
+
+{==============================================================================}
+{   TBitVectorStatic32 - protected methods                                     }
+{==============================================================================}
+
+constructor TBitVectorStatic32.Create(Memory: Pointer; Count: Integer);
+begin
+If (Count and 31) = 0 then
+  inherited Create(Memory,Count)
+else
+  raise Exception.Create('TBitVectorStatic32.Create: Count must be divisible by 32.');
+end;
+
+//   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
+
+constructor TBitVectorStatic32.Create(InitialCount: Integer = 0; InitialValue: Boolean = False);
+begin
+If (Count and 31) = 0 then
+  inherited Create(InitialCount,InitialValue)
+else
+  raise Exception.Create('TBitVectorStatic32.Create: Count must be divisible by 32.');
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVectorStatic32.FirstSet: Integer;
+var
+  i:      Integer;
+  Buffer: UInt32;
+
+  Function ScanBuffer(Value: UInt32): Integer;
+  begin
+    For Result := 0 to 31 do
+      If (Value shr Result) and 1 <> 0 then Exit;
+    raise Exception.Create('TBitVectorStatic32.FirstSet.ScanBuffer: Operation not allowed.');
+  end;
+
+begin
+Result := -1;
+If fCount > 0 then
+  For i := 0 to Pred(fCount shr 5) do
+    begin
+    {$IFDEF ENDIAN_BIG}
+      Buffer := SwapEndian({%H-}PUInt32({%H-}PtrUInt(fMemory) + PtrUInt(i * SizeOf(UInt32)))^);
+    {$ELSE}
+      Buffer := {%H-}PUInt32({%H-}PtrUInt(fMemory) + PtrUInt(i * SizeOf(UInt32)))^;
+    {$ENDIF}
+      If Buffer <> 0 then
+        begin
+          Result := (i * 32) + ScanBuffer(Buffer);
+          Break;
+        end;
+    end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVectorStatic32.FirstClean: Integer;
+var
+  i:      Integer;
+  Buffer: UInt32;
+
+  Function ScanBuffer(Value: UInt32): Integer;
+  begin
+    For Result := 0 to 31 do
+      If (Value shr Result) and 1 = 0 then Exit;
+    raise Exception.Create('TBitVectorStatic32.FirstClean.ScanBuffer: Operation not allowed.');
+  end;
+
+begin
+Result := -1;
+If fCount > 0 then
+  For i := 0 to Pred(fCount shr 5) do
+    begin
+    {$IFDEF ENDIAN_BIG}
+      Buffer := SwapEndian({%H-}PUInt32({%H-}PtrUInt(fMemory) + PtrUInt(i * SizeOf(UInt32)))^);
+    {$ELSE}
+      Buffer := {%H-}PUInt32({%H-}PtrUInt(fMemory) + PtrUInt(i * SizeOf(UInt32)))^;
+    {$ENDIF}
+      If Buffer <> $FFFFFFFF then
+        begin
+          Result := (i * 32) + ScanBuffer(Buffer);
+          Break;
+        end;
+    end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVectorStatic32.LastSet: Integer;
+var
+  i:      Integer;
+  Buffer: UInt32;
+
+  Function ScanBuffer(Value: UInt32): Integer;
+  begin
+    For Result := 31 downto 0 do
+      If (Value shr Result) and 1 <> 0 then Exit;
+    raise Exception.Create('TBitVectorStatic32.LastSet.ScanBuffer: Operation not allowed.');
+  end;
+
+begin
+Result := -1;
+If fCount > 0 then
+  For i := Pred(fCount shr 5) downto 0 do
+    begin
+    {$IFDEF ENDIAN_BIG}
+      Buffer := SwapEndian({%H-}PUInt32({%H-}PtrUInt(fMemory) + PtrUInt(i * SizeOf(UInt32)))^);
+    {$ELSE}
+      Buffer := {%H-}PUInt32({%H-}PtrUInt(fMemory) + PtrUInt(i * SizeOf(UInt32)))^;
+    {$ENDIF}
+      If Buffer <> 0 then
+        begin
+          Result := (i * 32) + ScanBuffer(Buffer);
+          Break;
+        end;
+    end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TBitVectorStatic32.LastClean: Integer;
+var
+  i:      Integer;
+  Buffer: UInt32;
+
+  Function ScanBuffer(Value: UInt32): Integer;
+  begin
+    For Result := 31 downto 0 do
+      If (Value shr Result) and 1 = 0 then Exit;
+    raise Exception.Create('TBitVectorStatic32.LastClean.ScanBuffer: Operation not allowed.');
+  end;
+
+begin
+Result := -1;
+If fCount > 0 then
+  For i := Pred(fCount shr 5) downto 0 do
+    begin
+    {$IFDEF ENDIAN_BIG}
+      Buffer := SwapEndian({%H-}PUInt32({%H-}PtrUInt(fMemory) + PtrUInt(i * SizeOf(UInt32)))^);
+    {$ELSE}
+      Buffer := {%H-}PUInt32({%H-}PtrUInt(fMemory) + PtrUInt(i * SizeOf(UInt32)))^;
+    {$ENDIF}
+      If Buffer <> $FFFFFFFF then
+        begin
+          Result := (i * 32) + ScanBuffer(Buffer);
+          Break;
+        end;
+    end;
+end;
 
 end.
