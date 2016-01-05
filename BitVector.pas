@@ -1195,7 +1195,7 @@ end;
 {==============================================================================}
 
 {==============================================================================}
-{   TBitVectorStatic32 - protected methods                                     }
+{   TBitVectorStatic32 - public methods                                        }
 {==============================================================================}
 
 constructor TBitVectorStatic32.Create(Memory: Pointer; Count: Integer);
