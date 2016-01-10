@@ -96,7 +96,7 @@ type
     procedure AssignAND(Vector: TBitVector); overload; virtual;
     procedure AssignXOR(Memory: Pointer; Count: Integer); overload; virtual;
     procedure AssignXOR(Vector: TBitVector); overload; virtual;
-    Function Same(Vector: TBitVector): Boolean; virtual;
+    Function Equals(Vector: TBitVector): Boolean; overload; virtual;
     procedure SaveToStream(Stream: TStream); virtual;
     procedure LoadFromStream(Stream: TStream); virtual;
     procedure SaveToFile(const FileName: String); virtual;
@@ -1115,7 +1115,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function TBitVector.Same(Vector: TBitVector): Boolean;
+Function TBitVector.Equals(Vector: TBitVector): Boolean;
 var
   i:  Integer;
 begin
