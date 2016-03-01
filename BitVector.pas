@@ -9,9 +9,9 @@
 
   BitVector classes
 
-  ©František Milt 2016-01-05
+  ©František Milt 2016-03-01
 
-  Version 1.0 alpha (needs testing) 
+  Version 1.0.1 
 
 ===============================================================================}
 unit BitVector;
