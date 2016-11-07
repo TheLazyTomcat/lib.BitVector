@@ -20,6 +20,8 @@ interface
 
 {$IFDEF FPC}
   {$MODE Delphi}
+  // Activate symbol BARE_FPC if you want to compile this unit outside of Lazarus.
+  {.$DEFINE BARE_FPC}
 {$ENDIF}
 
 uses
@@ -143,7 +145,7 @@ implementation
 
 uses
   SysUtils, Math, BitOps
-  {$IF Defined(FPC) and not Defined(Unicode)}
+  {$IF Defined(FPC) and not Defined(Unicode) and not Defined(BARE_FPC)}
   (*
     If compiler throws error that LazUTF8 unit cannot be found, you have to
     add LazUtils to required packages (Project > Project Inspector).
@@ -1069,7 +1071,7 @@ procedure TBitVector.SaveToFile(const FileName: String);
 var
   FileStream: TFileStream;
 begin
-{$IF Defined(FPC) and not Defined(Unicode)}
+{$IF Defined(FPC) and not Defined(Unicode) and not Defined(BARE_FPC)}
 FileStream := TFileStream.Create(UTF8ToSys(FileName),fmCreate or fmShareExclusive);
 {$ELSE}
 FileStream := TFileStream.Create(FileName,fmCreate or fmShareExclusive);
@@ -1087,7 +1089,7 @@ procedure TBitVector.LoadFromFile(const FileName: String);
 var
   FileStream: TFileStream;
 begin
-{$IF Defined(FPC) and not Defined(Unicode)}
+{$IF Defined(FPC) and not Defined(Unicode) and not Defined(BARE_FPC)}
 FileStream := TFileStream.Create(UTF8ToSys(FileName),fmOpenRead or fmShareDenyWrite);
 {$ELSE}
 FileStream := TFileStream.Create(FileName,fmOpenRead or fmShareDenyWrite);
