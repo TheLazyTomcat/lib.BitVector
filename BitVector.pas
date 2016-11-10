@@ -11,7 +11,11 @@
 
   ©František Milt 2016-08-19
 
-  Version 1.1 
+  Version 1.1
+
+  Dependencies:
+    AuxTypes - github.com/ncs-sniper/Lib.AuxTypes
+    BitOps   - github.com/ncs-sniper/Lib.BitOps
 
 ===============================================================================}
 unit BitVector;
