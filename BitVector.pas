@@ -9,13 +9,14 @@
 
   BitVector classes
 
-  ©František Milt 2016-08-19
+  ©František Milt 2017-07-18
 
-  Version 1.1
+  Version 1.2
 
   Dependencies:
     AuxTypes - github.com/ncs-sniper/Lib.AuxTypes
     BitOps   - github.com/ncs-sniper/Lib.BitOps
+    StrRect  - github.com/ncs-sniper/Lib.StrRect
 
 ===============================================================================}
 unit BitVector;
@@ -24,9 +25,9 @@ interface
 
 {$IFDEF FPC}
   {$MODE Delphi}
-  // Activate symbol BARE_FPC if you want to compile this unit outside of Lazarus.
-  {.$DEFINE BARE_FPC}
 {$ENDIF}
+
+{$TYPEINFO ON}
 
 uses
   Classes, AuxTypes;
@@ -104,7 +105,7 @@ type
     procedure AssignAND(Vector: TBitVector); overload; virtual;
     procedure AssignXOR(Memory: Pointer; Count: Integer); overload; virtual;
     procedure AssignXOR(Vector: TBitVector); overload; virtual;
-    Function Equals(Vector: TBitVector): Boolean; overload; virtual;
+    Function IsEqual(Vector: TBitVector): Boolean; virtual;
     procedure SaveToStream(Stream: TStream); virtual;
     procedure LoadFromStream(Stream: TStream); virtual;
     procedure SaveToFile(const FileName: String); virtual;
@@ -148,14 +149,7 @@ type
 implementation
 
 uses
-  SysUtils, Math, BitOps
-  {$IF Defined(FPC) and not Defined(Unicode) and not Defined(BARE_FPC)}
-  (*
-    If compiler throws error that LazUTF8 unit cannot be found, you have to
-    add LazUtils to required packages (Project > Project Inspector).
-  *)
-  , LazUTF8
-  {$IFEND};
+  SysUtils, Math, BitOps, StrRect;
 
 {==============================================================================}
 {------------------------------------------------------------------------------}
@@ -1026,7 +1020,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function TBitVector.Equals(Vector: TBitVector): Boolean;
+Function TBitVector.IsEqual(Vector: TBitVector): Boolean;
 var
   i:  Integer;
 begin
@@ -1075,11 +1069,7 @@ procedure TBitVector.SaveToFile(const FileName: String);
 var
   FileStream: TFileStream;
 begin
-{$IF Defined(FPC) and not Defined(Unicode) and not Defined(BARE_FPC)}
-FileStream := TFileStream.Create(UTF8ToSys(FileName),fmCreate or fmShareExclusive);
-{$ELSE}
-FileStream := TFileStream.Create(FileName,fmCreate or fmShareExclusive);
-{$IFEND}
+FileStream := TFileStream.Create(StrToRTL(FileName),fmCreate or fmShareExclusive);
 try
   SaveToStream(FileStream);
 finally
@@ -1093,11 +1083,7 @@ procedure TBitVector.LoadFromFile(const FileName: String);
 var
   FileStream: TFileStream;
 begin
-{$IF Defined(FPC) and not Defined(Unicode) and not Defined(BARE_FPC)}
-FileStream := TFileStream.Create(UTF8ToSys(FileName),fmOpenRead or fmShareDenyWrite);
-{$ELSE}
-FileStream := TFileStream.Create(FileName,fmOpenRead or fmShareDenyWrite);
-{$IFEND}
+FileStream := TFileStream.Create(StrToRTL(FileName),fmOpenRead or fmShareDenyWrite);
 try
   LoadFromStream(FileStream);
 finally
