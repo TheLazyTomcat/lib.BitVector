@@ -14,9 +14,12 @@
   Version 1.2
 
   Dependencies:
-    AuxTypes - github.com/ncs-sniper/Lib.AuxTypes
-    BitOps   - github.com/ncs-sniper/Lib.BitOps
-    StrRect  - github.com/ncs-sniper/Lib.StrRect
+    AuxTypes    - github.com/ncs-sniper/Lib.AuxTypes
+    BitOps      - github.com/ncs-sniper/Lib.BitOps
+    StrRect     - github.com/ncs-sniper/Lib.StrRect
+  * SimpleCPUID - github.com/ncs-sniper/Lib.SimpleCPUID
+
+  SimpleCPUID might not be needed, see BitOps library for details.
 
 ===============================================================================}
 unit BitVector;
