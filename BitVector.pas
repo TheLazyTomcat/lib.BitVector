@@ -77,7 +77,7 @@ type
     Function EndChanging: Integer;
     Function LowIndex: Integer; virtual;
     Function HighIndex: Integer; virtual;    
-    Function Firts: Boolean; virtual;
+    Function First: Boolean; virtual;
     Function Last: Boolean; virtual;
     Function Grow(Force: Boolean = False): Integer; virtual;
     Function Shrink: Integer; virtual;
@@ -499,7 +499,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function TBitVector.Firts: Boolean;
+Function TBitVector.First: Boolean;
 begin
 Result := GetBit(LowIndex);
 end;
