@@ -30,6 +30,7 @@ interface
 {$IFDEF FPC}
   {$MODE Delphi}
   {$DEFINE FPC_DisableWarns}
+  {$MACRO ON}
 {$ENDIF}
 
 {$TYPEINFO ON}
@@ -171,7 +172,8 @@ uses
   SysUtils, Math, BitOps, StrRect;
 
 {$IFDEF FPC_DisableWarns}
-  {$WARN 4055 OFF} // Conversion between ordinals and pointers is not portable
+  {$DEFINE FPCDWM}
+  {$DEFINE W4055:={$WARN 4055 OFF}} // Conversion between ordinals and pointers is not portable
 {$ENDIF}
 
 {===============================================================================
@@ -204,14 +206,18 @@ end;
 
 Function TBitVector.GetBytePtrBitIdx(BitIndex: Integer): PByte;
 begin
+{$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
 Result := PByte(PtrUInt(fMemory) + PtrUInt(BitIndex shr 3));
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 end;
 
 //------------------------------------------------------------------------------
 
 Function TBitVector.GetBytePtrByteIdx(ByteIndex: Integer): PByte;
 begin
+{$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
 Result := PByte(PtrUInt(fMemory) + PtrUInt(ByteIndex));
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 end;
 
 //------------------------------------------------------------------------------
@@ -966,11 +972,13 @@ If MemoryEditable('AssignOR') then
     BeginChanging;
     try
       If Count > fCount then Self.Count := Count;
+    {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
       For i := 0 to Pred(Count shr 3) do
         GetBytePtrByteIdx(i)^ := GetBytePtrByteIdx(i)^ or PByte(PtrUInt(Memory) + PtrUInt(i))^;
       If (Count and 7) <> 0 then
         For i := (Count and not 7) to Pred(Count) do
           SetBit_LL(i,GetBit_LL(i) or ((PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^ shr (i and 7)) and 1 <> 0));
+    {$IFDEF FPCDWM}{$POP}{$ENDIF}
       ScanForPopCount;
       DoOnChange;
     finally
@@ -1002,11 +1010,13 @@ If MemoryEditable('AssignAND') then
           Self.Count := Count;
           Fill(i,Pred(fCount),True); 
         end;
+    {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
       For i := 0 to Pred(Count shr 3) do
         GetBytePtrByteIdx(i)^ := GetBytePtrByteIdx(i)^ and PByte(PtrUInt(Memory) + PtrUInt(i))^;
       If (Count and 7) <> 0 then
         For i := (Count and not 7) to Pred(Count) do
           SetBit_LL(i,GetBit_LL(i) and ((PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^ shr (i and 7)) and 1 <> 0));
+    {$IFDEF FPCDWM}{$POP}{$ENDIF}
       ScanForPopCount;
       DoOnChange;
     finally
@@ -1033,11 +1043,13 @@ If MemoryEditable('AssignXOR') then
     BeginChanging;
     try
       If Count > fCount then Self.Count := Count;
+    {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
       For i := 0 to Pred(Count shr 3) do
         GetBytePtrByteIdx(i)^ := GetBytePtrByteIdx(i)^ xor PByte(PtrUInt(Memory) + PtrUInt(i))^;
       If (Count and 7) <> 0 then
         For i := (Count and not 7) to Pred(Count) do
           SetBit_LL(i,GetBit_LL(i) xor ((PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^ shr (i and 7)) and 1 <> 0));
+    {$IFDEF FPCDWM}{$POP}{$ENDIF}
       ScanForPopCount;
       DoOnChange;
     finally
@@ -1062,8 +1074,10 @@ begin
 Result := False;
 If (fCount = Vector.Count) and (fPopCount = Vector.PopCount) then
   begin
+  {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
     For i := 0 to Pred(fCount shr 3) do
       If GetBytePtrByteIdx(i)^ <> PByte(PtrUInt(Vector.Memory) + PtrUInt(i))^ then Exit;
+  {$IFDEF FPCDWM}{$POP}{$ENDIF}
     If (fCount and 7) <> 0 then
       For i := (fCount and not 7) to Pred(fCount) do
         If GetBit_LL(i) <> Vector[i] then Exit;
