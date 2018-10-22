@@ -9,9 +9,9 @@
 
   BitVector classes
 
-  ©František Milt 2018-05-02
+  ©František Milt 2018-10-21
 
-  Version 1.3
+  Version 1.3.1
 
   Dependencies:
     AuxTypes    - github.com/ncs-sniper/Lib.AuxTypes
@@ -32,8 +32,6 @@ interface
   {$DEFINE FPC_DisableWarns}
   {$MACRO ON}
 {$ENDIF}
-
-{$TYPEINFO ON}
 
 uses
   Classes, AuxTypes, AuxClasses;
@@ -124,7 +122,6 @@ type
     procedure LoadFromFile(const FileName: String); virtual;
     property Bits[Index: Integer]: Boolean read GetBit write SetBit; default;
     property Memory: Pointer read fMemory;
-  published
     property OwnsMemory: Boolean read fOwnsMemory;
     property Static: Boolean read fStatic;
     property PopCount: Integer read fPopCount;
