@@ -9,18 +9,29 @@
 
   BitVector classes
 
-  ©František Milt 2018-10-21
-
   Version 1.3.1
 
-  Dependencies:
-    AuxTypes    - github.com/ncs-sniper/Lib.AuxTypes
-    AuxClasses  - github.com/ncs-sniper/Lib.AuxClasses
-    BitOps      - github.com/ncs-sniper/Lib.BitOps
-    StrRect     - github.com/ncs-sniper/Lib.StrRect
-  * SimpleCPUID - github.com/ncs-sniper/Lib.SimpleCPUID
+  Last changed 2019-08-18
 
-  SimpleCPUID might not be needed, see BitOps library for details.
+  ©2015-2019 František Milt
+
+  Contacts:
+    František Milt: frantisek.milt@gmail.com
+
+  Support:
+    If you find this code useful, please consider supporting its author(s) by
+    making a small donation using the following link(s):
+
+      https://www.paypal.me/FMilt  
+
+  Dependencies:
+    AuxTypes    - github.com/TheLazyTomcat/Lib.AuxTypes
+    AuxClasses  - github.com/TheLazyTomcat/Lib.AuxClasses
+    BitOps      - github.com/TheLazyTomcat/Lib.BitOps
+    StrRect     - github.com/TheLazyTomcat/Lib.StrRect
+  * SimpleCPUID - github.com/TheLazyTomcat/Lib.SimpleCPUID
+
+    SimpleCPUID might not be needed, see BitOps library for details.
 
 ===============================================================================}
 unit BitVector;
@@ -34,7 +45,8 @@ interface
 {$ENDIF}
 
 uses
-  Classes, AuxTypes, AuxClasses;
+  Classes,
+  AuxTypes, AuxClasses;
 
 type
 {===============================================================================
@@ -166,7 +178,8 @@ type
 implementation
 
 uses
-  SysUtils, Math, BitOps, StrRect;
+  SysUtils, Math,
+  BitOps, StrRect;
 
 {$IFDEF FPC_DisableWarns}
   {$DEFINE FPCDWM}
