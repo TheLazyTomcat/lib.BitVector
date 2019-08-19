@@ -9,9 +9,9 @@
 
   BitVector classes
 
-  Version 1.3.1
+  Version 1.3.1 (2018-10-22)
 
-  Last changed 2019-08-18
+  Last change 2019-08-19
 
   ©2015-2019 František Milt
 
@@ -22,7 +22,12 @@
     If you find this code useful, please consider supporting its author(s) by
     making a small donation using the following link(s):
 
-      https://www.paypal.me/FMilt  
+      https://www.paypal.me/FMilt
+
+  Changelog:
+    For detailed changelog and history please refer to this git repository:
+
+      github.com/TheLazyTomcat/Lib.BitVector
 
   Dependencies:
     AuxTypes    - github.com/TheLazyTomcat/Lib.AuxTypes
