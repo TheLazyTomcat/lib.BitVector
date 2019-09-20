@@ -50,10 +50,15 @@ interface
 {$ENDIF}
 
 uses
-  Classes,
+  SysUtils, Classes,
   AuxTypes, AuxClasses;
 
 type
+  EBVException = class(Exception);
+
+  EBVIndexOutOfBounds = class(EBVException);
+  EBVMemoryNotEditable = class(EBVException);
+
 {===============================================================================
 --------------------------------------------------------------------------------
                                    TBitVector                                   
@@ -86,8 +91,8 @@ type
     procedure SetCapacity(Value: Integer); override;
     Function GetCount: Integer; override;
     procedure SetCount(Value: Integer); override;
-    procedure RaiseError(const MethodName, ErrorMessage: String; Values: array of const); overload; virtual;
-    procedure RaiseError(const MethodName, ErrorMessage: String); overload; virtual;
+    procedure RaiseError(const MethodName, ErrorMessage: String; Values: array of const; ErrorType: Integer = -1); overload; virtual;
+    procedure RaiseError(const MethodName, ErrorMessage: String; ErrorType: Integer = -1); overload; virtual;
     Function CheckIndexAndRaise(Index: Integer; const MethodName: String = 'CheckIndex'): Boolean; virtual;
     Function CheckMemoryEditable(const MethodName: String = 'MemoryEditable'; RaiseException: Boolean = True): Boolean; virtual;
     procedure ShiftDown(Idx1,Idx2: Integer); virtual;
@@ -185,7 +190,7 @@ type
 implementation
 
 uses
-  SysUtils, Math,
+  Math,
   BitOps, StrRect;
 
 {$IFDEF FPC_DisableWarns}
@@ -211,6 +216,9 @@ const
   BV_COMBINE_OPERATOR_OR  = 0;
   BV_COMBINE_OPERATOR_AND = 1;
   BV_COMBINE_OPERATOR_XOR = 2;
+
+  BV_ERROR_TYPE_IOOB = 1;
+  BV_ERROR_TYPE_MENE = 2;
 
 //------------------------------------------------------------------------------
 
@@ -371,16 +379,21 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure TBitVector.RaiseError(const MethodName, ErrorMessage: String; Values: array of const);
+procedure TBitVector.RaiseError(const MethodName, ErrorMessage: String; Values: array of const; ErrorType: Integer = -1);
 begin
-raise Exception.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
+case ErrorType of
+  BV_ERROR_TYPE_IOOB: EBVIndexOutOfBounds.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
+  BV_ERROR_TYPE_MENE: EBVMemoryNotEditable.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
+else
+  raise EBVException.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
+end;
 end;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-procedure TBitVector.RaiseError(const MethodName, ErrorMessage: String);
+procedure TBitVector.RaiseError(const MethodName, ErrorMessage: String; ErrorType: Integer = -1);
 begin
-RaiseError(MethodName,ErrorMessage,[]);
+RaiseError(MethodName,ErrorMessage,[],ErrorType);
 end;
 
 //------------------------------------------------------------------------------
@@ -389,7 +402,7 @@ Function TBitVector.CheckIndexAndRaise(Index: Integer; const MethodName: String 
 begin
 Result := CheckIndex(Index);
 If not Result then
-  RaiseError(MethodName,'Index (%d) out of bounds.',[Index]);
+  RaiseError(MethodName,'Index (%d) out of bounds.',[Index],BV_ERROR_TYPE_IOOB);
 end;
 
 //------------------------------------------------------------------------------
@@ -400,9 +413,9 @@ Result := fOwnsMemory and not fStatic;
 If RaiseException then
   begin
     If fStatic then
-      RaiseError(MethodName,'Method not allowed for a static vector.');
+      RaiseError(MethodName,'Method not allowed for a static vector.',BV_ERROR_TYPE_MENE);
     If not fOwnsMemory then
-      RaiseError(MethodName,'Method not allowed for not owned memory.');
+      RaiseError(MethodName,'Method not allowed for not owned memory.',BV_ERROR_TYPE_MENE);
   end;
 end;
 
