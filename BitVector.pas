@@ -9,7 +9,7 @@
 
   BitVector classes
 
-  Version 1.3.2 (2019-09-20)
+  Version 1.3.3 (2019-09-20)
 
   Last change 2019-09-20
 
@@ -93,6 +93,7 @@ type
     procedure ShiftDown(Idx1,Idx2: Integer); virtual;
     procedure ShiftUp(Idx1,Idx2: Integer); virtual;
     procedure ScanForPopCount; virtual;
+    procedure Combine(Memory: Pointer; Count: Integer; Operator: Integer); virtual;
     procedure Initialize; virtual;
     procedure DoChange; virtual;
   public
@@ -206,6 +207,10 @@ uses
 const
   AllocDeltaBits  = 128;
   AllocDeltaBytes = AllocDeltaBits div 8;
+
+  BV_COMBINE_OPERATOR_OR  = 0;
+  BV_COMBINE_OPERATOR_AND = 1;
+  BV_COMBINE_OPERATOR_XOR = 2;
 
 //------------------------------------------------------------------------------
 
@@ -490,6 +495,65 @@ If fCount > 0 then
     // partial byte...
     If (fCount and 7) > 0 then
       Inc(fPopCount,BitOps.PopCount(Byte(GetBytePtrBitIdx(fCount)^ and ($FF shr (8 - (fCount and 7))))));
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.Combine(Memory: Pointer; Count: Integer; Operator: Integer);
+var
+  i:  Integer;
+
+  Function CombineBytes(A,B: Byte): Byte;
+  begin
+    case Operator of
+      BV_COMBINE_OPERATOR_AND:  Result := A and B;
+      BV_COMBINE_OPERATOR_XOR:  Result := A xor B;
+    else
+     {BV_COMBINE_OPERATOR_OR}
+      Result := A or B;
+    end;
+  end;
+
+  Function CombineBool(A,B: Boolean): Boolean;
+  begin
+    case Operator of
+      BV_COMBINE_OPERATOR_AND:  Result := A and B;
+      BV_COMBINE_OPERATOR_XOR:  Result := A xor B;
+    else
+     {BV_COMBINE_OPERATOR_OR}
+      Result := A or B;
+    end;
+  end;
+  
+begin
+If CheckMemoryEditable('Combine') and (Count > 0) then
+  begin
+    BeginChanging;
+    try
+      If Count > fCount then
+        begin
+          i := fCount;
+          Self.Count := Count;
+          If Operator = BV_COMBINE_OPERATOR_AND then
+            Fill(i,Pred(fCount),True) // set new bits (so when combined using AND they will take value from Memory)
+          else
+            Fill(i,HighIndex,False);  // clear new bits
+        end;
+    {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
+      // whole bytes
+      For i := 0 to Pred(Count shr 3) do
+        GetBytePtrByteIdx(i)^ := CombineBytes(GetBytePtrByteIdx(i)^,PByte(PtrUInt(Memory) + PtrUInt(i))^);
+      // partial bytes if any
+      If (Count and 7) <> 0 then
+        For i := (Count and not 7) to Pred(Count) do
+          SetBit_LL(i,CombineBool(GetBit_LL(i),((PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^ shr (i and 7)) and 1 <> 0)));
+    {$IFDEF FPCDWM}{$POP}{$ENDIF}
+      ScanForPopCount;
+      DoChange;
+    finally
+      EndChanging;
+    end;
   end;
 end;
 
@@ -1000,34 +1064,8 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TBitVector.CombineOR(Memory: Pointer; Count: Integer);
-var
-  i:  Integer;
 begin
-If CheckMemoryEditable('CombineOR') and (Count > 0) then
-  begin
-    BeginChanging;
-    try
-      If Count > fCount then
-        begin
-          i := fCount;
-          Self.Count := Count;
-          Fill(i,HighIndex,False);  // clear new bits
-        end;
-    {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
-      // whole bytes
-      For i := 0 to Pred(Count shr 3) do
-        GetBytePtrByteIdx(i)^ := GetBytePtrByteIdx(i)^ or PByte(PtrUInt(Memory) + PtrUInt(i))^;
-      // partial bytes if any
-      If (Count and 7) <> 0 then
-        For i := (Count and not 7) to Pred(Count) do
-          SetBit_LL(i,GetBit_LL(i) or ((PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^ shr (i and 7)) and 1 <> 0));
-    {$IFDEF FPCDWM}{$POP}{$ENDIF}
-      ScanForPopCount;
-      DoChange;
-    finally
-      EndChanging;
-    end;
-  end;
+Combine(Memory,Count,BV_COMBINE_OPERATOR_OR);
 end;
 
 //   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
@@ -1040,32 +1078,8 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TBitVector.CombineAND(Memory: Pointer; Count: Integer);
-var
-  i:  Integer;
 begin
-If CheckMemoryEditable('CombineAND') and (Count > 0) then
-  begin
-    BeginChanging;
-    try
-      If Count > fCount then
-        begin
-          i := fCount;
-          Self.Count := Count;
-          Fill(i,Pred(fCount),True);  // set new bits (so when combined using AND they will take value from Memory) 
-        end;
-    {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
-      For i := 0 to Pred(Count shr 3) do
-        GetBytePtrByteIdx(i)^ := GetBytePtrByteIdx(i)^ and PByte(PtrUInt(Memory) + PtrUInt(i))^;
-      If (Count and 7) <> 0 then
-        For i := (Count and not 7) to Pred(Count) do
-          SetBit_LL(i,GetBit_LL(i) and ((PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^ shr (i and 7)) and 1 <> 0));
-    {$IFDEF FPCDWM}{$POP}{$ENDIF}
-      ScanForPopCount;
-      DoChange;
-    finally
-      EndChanging;
-    end;
-  end;
+Combine(Memory,Count,BV_COMBINE_OPERATOR_AND);
 end;
 
 //   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
@@ -1078,32 +1092,8 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TBitVector.CombineXOR(Memory: Pointer; Count: Integer);
-var
-  i:  Integer;
 begin
-If CheckMemoryEditable('CombineXOR') and (Count > 0) then
-  begin
-    BeginChanging;
-    try
-      If Count > fCount then
-        begin
-          i := fCount;
-          Self.Count := Count;
-          Fill(i,HighIndex,False);  // clear new bits
-        end;
-    {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
-      For i := 0 to Pred(Count shr 3) do
-        GetBytePtrByteIdx(i)^ := GetBytePtrByteIdx(i)^ xor PByte(PtrUInt(Memory) + PtrUInt(i))^;
-      If (Count and 7) <> 0 then
-        For i := (Count and not 7) to Pred(Count) do
-          SetBit_LL(i,GetBit_LL(i) xor ((PByte(PtrUInt(Memory) + PtrUInt(Count shr 3))^ shr (i and 7)) and 1 <> 0));
-    {$IFDEF FPCDWM}{$POP}{$ENDIF}
-      ScanForPopCount;
-      DoChange;
-    finally
-      EndChanging;
-    end;
-  end;
+Combine(Memory,Count,BV_COMBINE_OPERATOR_XOR);
 end;
 
 //   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---
