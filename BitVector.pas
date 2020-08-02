@@ -11,9 +11,9 @@
 
   Version 1.3.3 (2019-09-20)
 
-  Last change 2019-09-20
+  Last change 2020-08-02
 
-  ©2015-2019 František Milt
+  ©2015-2020 František Milt
 
   Contacts:
     František Milt: frantisek.milt@gmail.com
@@ -48,6 +48,7 @@ interface
   {$DEFINE FPC_DisableWarns}
   {$MACRO ON}
 {$ENDIF}
+{$H+}
 
 uses
   SysUtils, Classes,
