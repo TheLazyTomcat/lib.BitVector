@@ -11,9 +11,9 @@
 
   Version 1.3.3 (2019-09-20)
 
-  Last change 2020-08-02
+  Last change 2022-09-13
 
-  ©2015-2020 František Milt
+  ©2015-2022 František Milt
 
   Contacts:
     František Milt: frantisek.milt@gmail.com
@@ -54,6 +54,10 @@ uses
   SysUtils, Classes,
   AuxTypes, AuxClasses;
 
+{===============================================================================
+    Library-specific exceptions
+===============================================================================}
+
 type
   EBVException = class(Exception);
 
@@ -65,29 +69,28 @@ type
                                    TBitVector                                   
 --------------------------------------------------------------------------------
 ===============================================================================}
-
 {===============================================================================
     TBitVector - class declaration
 ===============================================================================}
-
+type
   TBitVector = class(TCustomListObject)
-  private
-    fOwnsMemory:    Boolean;
-    fMemSize:       TMemSize;
-    fMemory:        Pointer;
-    fCount:         Integer;
-    fPopCount:      Integer;
-    fStatic:        Boolean;  // when true, the memory cannot be reallocated, but can be written into
-    fChangeCounter: Integer;
-    fChanged:       Boolean;
-    fOnChange:      TNotifyEvent;
-    Function GetBytePtrBitIdx(BitIndex: Integer): PByte;
-    Function GetBytePtrByteIdx(ByteIndex: Integer): PByte;
-    Function GetBit_LL(Index: Integer): Boolean;
-    Function SetBit_LL(Index: Integer; Value: Boolean): Boolean;  // returns old value
-    Function GetBit(Index: Integer): Boolean;
-    procedure SetBit(Index: Integer; Value: Boolean);
   protected
+    fOwnsMemory:        Boolean;
+    fMemSize:           TMemSize;
+    fMemory:            Pointer;
+    fCount:             Integer;
+    fPopCount:          Integer;
+    fStatic:            Boolean;  // when true, the memory cannot be reallocated, but can be written into
+    fChangeCounter:     Integer;
+    fChanged:           Boolean;
+    fOnChangeEvent:     TNotifyEvent;
+    fOnChangeCallback:  TNotifyCallback;
+    Function GetBytePtrBitIdx(BitIndex: Integer): PByte; virtual;
+    Function GetBytePtrByteIdx(ByteIndex: Integer): PByte; virtual;
+    Function GetBit_LL(Index: Integer): Boolean; virtual;
+    Function SetBit_LL(Index: Integer; Value: Boolean): Boolean; virtual;  // returns old value
+    Function GetBit(Index: Integer): Boolean; virtual;
+    procedure SetBit(Index: Integer; Value: Boolean); virtual;
     Function GetCapacity: Integer; override;
     procedure SetCapacity(Value: Integer); override;
     Function GetCount: Integer; override;
@@ -149,8 +152,10 @@ type
     property MemorySize: TMemSize read fMemSize;
     property Memory: Pointer read fMemory;
     property PopCount: Integer read fPopCount;
-    property Static: Boolean read fStatic;    
-    property OnChange: TNotifyEvent read fOnChange write fOnChange;
+    property Static: Boolean read fStatic;
+    property OnChange: TNotifyEvent read fOnChangeEvent write fOnChangeEvent;
+    property OnChangeEvent: TNotifyEvent read fOnChangeEvent write fOnChangeEvent;
+    property OnChangeCallback: TNotifyCallback read fOnChangeCallback write fOnChangeCallback;
   end;
 
 {===============================================================================
@@ -158,11 +163,10 @@ type
                                 TBitVectorStatic
 --------------------------------------------------------------------------------
 ===============================================================================}
-
 {===============================================================================
     TBitVectorStatic - class declaration
 ===============================================================================}
-
+type
   TBitVectorStatic = class(TBitVector)
   protected
     procedure Initialize; override;
@@ -173,11 +177,10 @@ type
                                TBitVectorStatic32                               
 --------------------------------------------------------------------------------
 ===============================================================================}
-
 {===============================================================================
     TBitVectorStatic32 - class declaration
 ===============================================================================}
-
+type
   TBitVectorStatic32 = class(TBitVectorStatic)
   public
     constructor Create(Memory: Pointer; Count: Integer); overload; override;
@@ -205,7 +208,6 @@ uses
                                    TBitVector                                   
 --------------------------------------------------------------------------------
 ===============================================================================}
-
 {===============================================================================
     TBitVector - auxiliaty constants and functions
 ===============================================================================}
@@ -232,9 +234,8 @@ end;
 {===============================================================================
     TBitVector - class implementation
 ===============================================================================}
-
 {-------------------------------------------------------------------------------
-    TBitVector - private methods
+    TBitVector - protected methods
 -------------------------------------------------------------------------------}
 
 Function TBitVector.GetBytePtrBitIdx(BitIndex: Integer): PByte;
@@ -291,9 +292,7 @@ If CheckIndexAndRaise(Index,'SetBit') then
   end;
 end;
 
-{-------------------------------------------------------------------------------
-    TBitVector - protected methods
--------------------------------------------------------------------------------}
+//------------------------------------------------------------------------------
 
 Function TBitVector.GetCapacity: Integer;
 begin
@@ -583,7 +582,8 @@ fPopCount := 0;
 fStatic := False;
 fChangeCounter := 0;
 fChanged := False;
-fOnChange := nil;
+fOnChangeEvent := nil;
+fOnChangeCallback := nil;
 end;
 
 //------------------------------------------------------------------------------
@@ -591,8 +591,13 @@ end;
 procedure TBitVector.DoChange;
 begin
 fChanged := True;
-If (fChangeCounter <= 0) and Assigned(fOnChange) then
-  fOnChange(Self);
+If (fChangeCounter <= 0) then
+  begin
+    If Assigned(fOnChangeEvent) then
+      fOnChangeEvent(Self)
+    else If Assigned(fOnChangeCallback) then
+      fOnChangeCallback(Self);
+  end;
 end;
 
 
@@ -649,8 +654,8 @@ Dec(fChangeCounter);
 If fChangeCounter <= 0 then
   begin
     fChangeCounter := 0;
-    If fChanged and Assigned(fOnChange) then
-      fOnChange(Self);
+    If fChanged then
+      DoChange;
   end;
 Result := fChangeCounter;  
 end;
@@ -1216,11 +1221,9 @@ end;
                                 TBitVectorStatic
 --------------------------------------------------------------------------------
 ===============================================================================}
-
 {===============================================================================
     TBitVectorStatic - class implementation
 ===============================================================================}
-
 {-------------------------------------------------------------------------------
     TBitVectorStatic - protected methods
 -------------------------------------------------------------------------------}
@@ -1236,11 +1239,9 @@ end;
                                TBitVectorStatic32
 --------------------------------------------------------------------------------
 ===============================================================================}
-
 {===============================================================================
     TBitVectorStatic32 - class implementation
 ===============================================================================}
-
 {-------------------------------------------------------------------------------
     TBitVectorStatic32 - public methods
 -------------------------------------------------------------------------------}
