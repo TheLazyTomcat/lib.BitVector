@@ -11,7 +11,7 @@
 
   Version 1.3.3 (2019-09-20)
 
-  Last change 2022-09-13
+  Last change 2022-09-24
 
   ©2015-2022 František Milt
 
@@ -44,7 +44,8 @@ unit BitVector;
 interface
 
 {$IFDEF FPC}
-  {$MODE Delphi}
+  {$MODE ObjFPC}
+  {$MODESWITCH DuplicateLocals+}
   {$DEFINE FPC_DisableWarns}
   {$MACRO ON}
 {$ENDIF}
@@ -102,7 +103,7 @@ type
     procedure ShiftDown(Idx1,Idx2: Integer); virtual;
     procedure ShiftUp(Idx1,Idx2: Integer); virtual;
     procedure ScanForPopCount; virtual;
-    procedure Combine(Memory: Pointer; Count: Integer; Operator: Integer); virtual;
+    procedure Combine(Memory: Pointer; Count: Integer; Op: Integer); virtual;
     procedure Initialize; virtual;
     procedure DoChange; virtual;
   public
@@ -513,13 +514,13 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure TBitVector.Combine(Memory: Pointer; Count: Integer; Operator: Integer);
+procedure TBitVector.Combine(Memory: Pointer; Count: Integer; Op: Integer);
 var
   i:  Integer;
 
   Function CombineBytes(A,B: Byte): Byte;
   begin
-    case Operator of
+    case Op of
       BV_COMBINE_OPERATOR_AND:  Result := A and B;
       BV_COMBINE_OPERATOR_XOR:  Result := A xor B;
     else
@@ -530,7 +531,7 @@ var
 
   Function CombineBool(A,B: Boolean): Boolean;
   begin
-    case Operator of
+    case Op of
       BV_COMBINE_OPERATOR_AND:  Result := A and B;
       BV_COMBINE_OPERATOR_XOR:  Result := A xor B;
     else
@@ -548,7 +549,7 @@ If CheckMemoryEditable('Combine') and (Count > 0) then
         begin
           i := fCount;
           Self.Count := Count;
-          If Operator = BV_COMBINE_OPERATOR_AND then
+          If Op = BV_COMBINE_OPERATOR_AND then
             Fill(i,Pred(fCount),True) // set new bits (so when combined using AND they will take value from Memory)
           else
             Fill(i,HighIndex,False);  // clear new bits
@@ -1166,7 +1167,7 @@ end;
 
 procedure TBitVector.LoadFromStream(Stream: TStream);
 var
-  Count:  UInt32;
+  TempCount:  UInt32;
 begin
 If CheckMemoryEditable('LoadFromStream') then
   begin
@@ -1174,9 +1175,9 @@ If CheckMemoryEditable('LoadFromStream') then
     try
       // read and set number of bits
     {$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
-      Stream.ReadBuffer(Count,SizeOf(UInt32));
+      Stream.ReadBuffer(TempCount,SizeOf(UInt32));
     {$IFDEF FPCDWM}{$POP}{$ENDIF}
-      Self.Count := Integer(Count);
+      Self.Count := Integer(TempCount);
       // read data
       Stream.ReadBuffer(fMemory^,Ceil(fCount / 8));
       ScanForPopCount;
