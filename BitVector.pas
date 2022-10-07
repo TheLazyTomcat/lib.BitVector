@@ -11,7 +11,7 @@
 
   Version 1.3.3 (2019-09-20)
 
-  Last change 2022-09-24
+  Last change 2022-10-07
 
   ©2015-2022 František Milt
 
@@ -383,8 +383,8 @@ end;
 procedure TBitVector.RaiseError(const MethodName, ErrorMessage: String; Values: array of const; ErrorType: Integer = -1);
 begin
 case ErrorType of
-  BV_ERROR_TYPE_IOOB: EBVIndexOutOfBounds.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
-  BV_ERROR_TYPE_MENE: EBVMemoryNotEditable.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
+  BV_ERROR_TYPE_IOOB: raise EBVIndexOutOfBounds.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
+  BV_ERROR_TYPE_MENE: raise EBVMemoryNotEditable.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
 else
   raise EBVException.CreateFmt(Format('%s.%s: %s',[Self.ClassName,MethodName,ErrorMessage]),Values);
 end;
