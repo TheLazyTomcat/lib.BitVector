@@ -86,6 +86,7 @@ type
 type
   TBitVector = class(TCustomListObject)
   protected
+    fConstructorSetup:  Boolean;  // to allow SetCount and SetCapacity in static vectors
     fOwnsMemory:        Boolean;
     fMemSize:           TMemSize;
     fMemory:            Pointer;
@@ -485,7 +486,7 @@ end;
 
 Function TBitVector.MemoryCanBeReallocated: Boolean;
 begin
-Result := fOwnsMemory and not fStatic;
+Result := (fOwnsMemory and not fStatic) or fConstructorSetup;
 end;
 
 //------------------------------------------------------------------------------
@@ -646,7 +647,7 @@ If Count > 0 then
         For i := 0 to Pred(Count) do
           TempR := TempR or Byte(IfThen(Operations.BoolOperation(
             ((TempA shr i) and 1) <> 0,((TempB shr i) and 1) <> 0),1,0) shl i);
-        PByte(MovingPtr)^ := TempR;
+        SetBitsValue(PByte(MovingPtr)^,TempR,0,Pred(Count and 7));
       end;
     ScanForPopCount;
     DoChange;
@@ -657,6 +658,7 @@ end;
 
 procedure TBitVector.Initialize;
 begin
+fConstructorSetup := False;
 fOwnsMemory := True;
 fMemSize := 0;
 fMemory := nil;
@@ -714,7 +716,12 @@ begin
 inherited Create;
 Initialize;
 fOwnsMemory := True;
-SetCount(InitialCount); // sets capacity and therefore also fMemSize and fMemory
+fConstructorSetup := True;
+try
+  SetCount(InitialCount); // sets capacity and therefore also fMemSize and fMemory
+finally
+  fConstructorSetup := False;
+end;
 {
   No need to call Fill when InitialValue is false since the memory was
   implicitly cleared in a call to SetCount.
@@ -1245,7 +1252,7 @@ end;
 
 Function TBitVector.IsEmpty: Boolean;
 begin
-Result := (fCount > 0) and (fPopCount = 0);
+Result := fPopCount = 0;
 end;
 
 //------------------------------------------------------------------------------
@@ -1407,7 +1414,7 @@ If fCount > 0 then
           Exit;
         end;
     BitCount := fCount and not 7;
-    MovingPtr := GetBytePtrBitIdx(HighIndex);
+    MovingPtr := GetBytePtrBitIdx(fCount);
     while BitCount >= BV_NATINT_BITS do
       begin
         Dec(PNativeUInt(MovingPtr));
@@ -1451,7 +1458,7 @@ If fCount > 0 then
           Exit;
         end;   
     BitCount := fCount and not 7;
-    MovingPtr := GetBytePtrBitIdx(HighIndex);
+    MovingPtr := GetBytePtrBitIdx(fCount);
     while BitCount >= BV_NATINT_BITS do
       begin
         Dec(PNativeUInt(MovingPtr));
@@ -1512,7 +1519,7 @@ If fCount > 0 then
     // read only data, first whole bytes...
     Stream.ReadBuffer(fMemory^,fCount shr 3);
     // ...and now remaining bits
-    If (fCount and 7) <> 7 then
+    If (fCount and 7) <> 0 then
       begin
         Stream.ReadBuffer(Addr(Temp)^,1);
         SetBitsValue(GetBytePtrByteIdx(fCount shr 3)^,Temp,0,Pred(fCount and 7));
@@ -1718,15 +1725,16 @@ begin
 Result := -1;
 If fCount > 0 then
   begin
-    MovingPtr := fMemory;
+    MovingPtr := PtrAdvance(fMemory,PtrInt(fCount shr 3));
     For i := 0 to Pred(fCount shr 5) do
       begin
+        Dec(MovingPtr);
         If MovingPtr^ <> 0 then
           begin
-            Result := (i * 32) + BSR({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(MovingPtr^));
+            Result := fCount - (Succ(i) * 32) +
+              BSR({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(MovingPtr^));
             Break{For i};
           end;
-        Inc(MovingPtr);
       end;
   end;
 end;
@@ -1741,15 +1749,16 @@ begin
 Result := -1;
 If fCount > 0 then
   begin
-    MovingPtr := fMemory;
+    MovingPtr := PtrAdvance(fMemory,PtrInt(fCount shr 3));
     For i := 0 to Pred(fCount shr 5) do
       begin
+        Dec(MovingPtr);
         If MovingPtr^ <> $FFFFFFFF then
           begin
-            Result := (i * 32) + BSR({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(not MovingPtr^));
+            Result := fCount - (Succ(i) * 32) +
+              BSR({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(not MovingPtr^));
             Break{For i};
           end;
-        Inc(MovingPtr);
       end;
   end;
 end;
