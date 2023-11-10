@@ -7,11 +7,14 @@
 -------------------------------------------------------------------------------}
 {===============================================================================
 
-  BitVector classes
+  BitVector
 
-  Version 1.3.4 (2023-01-25)
+    Provides classes that can be used to access individual bits of memory in
+    a list-like manner.
 
-  Last change 2023-09-04
+  Version 1.4 (2023-11-10)
+
+  Last change 2023-11-10
 
   ©2015-2023 František Milt
 
@@ -47,8 +50,14 @@ unit BitVector;
   {$MODE ObjFPC}
   {$MODESWITCH DuplicateLocals+}
   {$MODESWITCH ClassicProcVars+}
-  {$DEFINE FPC_DisableWarns}
-  {$MACRO ON}
+  {$INLINE ON}
+  {$DEFINE CanInline}
+{$ELSE}
+  {$IF CompilerVersion >= 17 then}  // Delphi 2005+
+    {$DEFINE CanInline}
+  {$ELSE}
+    {$UNDEF CanInline}
+  {$IFEND}
 {$ENDIF}
 {$H+}
 
@@ -330,6 +339,31 @@ const
     ByteOperation:  ByteOperation_XOR;
     WordOperation:  WordOperation_XOR);
 
+//==============================================================================
+// endianness correction
+
+Function EndCor(Value: UInt32): UInt32; overload;{$IFDEF CanInline} inline;{$ENDIF}
+begin
+{$IFDEF ENDIAN_BIG}
+Result := EndianSwap(Value);
+{$ELSE}
+Result := Value;
+{$ENDIF}
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+{$IF SizeOf(NativeUInt) <> SizeOf(UInt32)}
+Function EndCor(Value: NativeUInt): NativeUInt; overload;{$IFDEF CanInline} inline;{$ENDIF}
+begin
+{$IFDEF ENDIAN_BIG}
+Result := EndianSwap(Value);
+{$ELSE}
+Result := Value;
+{$ENDIF}
+end;
+{$IFEND}
+
 {===============================================================================
     TBitVector - class implementation
 ===============================================================================}
@@ -508,7 +542,7 @@ If Idx2 > Idx1 then
           begin
             Dec(PNativeUInt(MovingPtr));
             Dec(ByteCount,BV_NATINT_BYTES);
-            RCRValueCarry(PNativeUInt(MovingPtr)^,1,Carry);
+            PNativeUInt(MovingPtr)^ := EndCor(RCRCarry(EndCor(PNativeUInt(MovingPtr)^),1,Carry));
           end;
         // shift whole bytes
         while ByteCount > 0 do
@@ -550,7 +584,7 @@ If Idx2 > Idx1 then
         // shift native words
         while ByteCount >= BV_NATINT_BYTES do
           begin
-            RCLValueCarry(PNativeUInt(MovingPtr)^,1,Carry);
+            PNativeUInt(MovingPtr)^ := EndCor(RCLCarry(EndCor(PNativeUInt(MovingPtr)^),1,Carry));
             Inc(PNativeUInt(MovingPtr));
             Dec(ByteCount,BV_NATINT_BYTES);
           end;
@@ -688,7 +722,6 @@ If (fChangeCounter <= 0) then
       fOnChangeCallback(Self);
   end;
 end;
-
 
 {-------------------------------------------------------------------------------
     TBitVector - public methods
@@ -962,8 +995,7 @@ If MemoryCanBeReallocated then
               begin
                 NextBytePtr := PtrAdvance(MovingPtr,1);
                 SetBitsValue(PByte(MovingPtr)^,Byte(PByte(NextBytePtr)^ shl LShift),LShift,7);
-                PNativeUInt(NextBytePtr)^ := {$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(
-                  {$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(PNativeUInt(NextBytePtr)^) shr RShift);
+                PNativeUInt(NextBytePtr)^ := EndCor(EndCor(PNativeUInt(NextBytePtr)^) shr RShift);
                 Inc(PNativeUInt(MovingPtr));
                 Dec(BytesCount,BV_NATINT_BYTES);
               end;
@@ -1032,9 +1064,10 @@ If MemoryCanBeReallocated or ((Index + Count) <= fCount) then
                       Inc(PByte(MovingPtrSelf));
                       Dec(Count,BV_NATINT_BITS);
                       If (Count <= 0) or ((Count < 8{this must be 8!}) and PartialEndFill) then
-                        SetBitsValue(PNativeUInt(MovingPtrSelf)^,PNativeUInt(MovingPtr)^ shr RShift,0,Pred(BV_NATINT_BITS - RShift))
+                        PNativeUInt(MovingPtrSelf)^ := EndCor(SetBits(EndCor(PNativeUInt(MovingPtrSelf)^),
+                          EndCor(PNativeUInt(MovingPtr)^) shr RShift,0,Pred(BV_NATINT_BITS - RShift)))
                       else
-                        PNativeUInt(MovingPtrSelf)^ := NativeUInt(PNativeUInt(MovingPtr)^ shr RShift); 
+                        PNativeUInt(MovingPtrSelf)^ := EndCor(EndCor(PNativeUInt(MovingPtr)^) shr RShift); 
                       Inc(PNativeUInt(MovingPtr));
                       Inc(PByte(MovingPtrSelf),Pred(BV_NATINT_BYTES));
                     end;
@@ -1423,7 +1456,7 @@ If fCount > 0 then
         If PNativeUInt(MovingPtr)^ <> 0 then
           begin
             Result := (fCount - BitCount) +
-              BSF({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(PNativeUInt(MovingPtr)^));
+              BSF(EndCor(PNativeUInt(MovingPtr)^));
             Exit;
           end;
         Dec(BitCount,BV_NATINT_BITS);
@@ -1470,7 +1503,7 @@ If fCount > 0 then
         If PNativeUInt(MovingPtr)^ <> BV_NATINT_MAX then
           begin
             Result := (fCount - BitCount) +
-              BSF({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(not PNativeUInt(MovingPtr)^));
+              BSF(EndCor(not PNativeUInt(MovingPtr)^));
             Exit;
           end;
         Dec(BitCount,BV_NATINT_BITS);
@@ -1522,8 +1555,7 @@ If fCount > 0 then
         Dec(BitCount,BV_NATINT_BITS);
         If PNativeUInt(MovingPtr)^ <> 0 then
           begin
-            Result := BitCount +
-              BSR({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(PNativeUInt(MovingPtr)^));
+            Result := BitCount + BSR(EndCor(PNativeUInt(MovingPtr)^));
             Exit;
           end;
       end;
@@ -1566,8 +1598,7 @@ If fCount > 0 then
         Dec(BitCount,BV_NATINT_BITS);
         If PNativeUInt(MovingPtr)^ <> BV_NATINT_MAX then
           begin
-            Result := BitCount +
-              BSR({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(not PNativeUInt(MovingPtr)^));
+            Result := BitCount + BSR(EndCor(not PNativeUInt(MovingPtr)^));
             Exit;
           end;
       end;
@@ -1785,7 +1816,7 @@ If fCount > 0 then
       begin
         If MovingPtr^ <> 0 then
           begin
-            Result := (i * 32) + BSF({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(MovingPtr^));
+            Result := (i * 32) + BSF(EndCor(MovingPtr^));
             Break{For i};
           end;
         Inc(MovingPtr);
@@ -1808,7 +1839,7 @@ If fCount > 0 then
       begin
         If MovingPtr^ <> $FFFFFFFF then
           begin
-            Result := (i * 32) + BSF({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(not MovingPtr^));
+            Result := (i * 32) + BSF(EndCor(not MovingPtr^));
             Break{For i};
           end;
         Inc(MovingPtr);
@@ -1832,8 +1863,7 @@ If fCount > 0 then
         Dec(MovingPtr);
         If MovingPtr^ <> 0 then
           begin
-            Result := fCount - (Succ(i) * 32) +
-              BSR({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(MovingPtr^));
+            Result := fCount - (Succ(i) * 32) + BSR(EndCor(MovingPtr^));
             Break{For i};
           end;
       end;
@@ -1856,8 +1886,7 @@ If fCount > 0 then
         Dec(MovingPtr);
         If MovingPtr^ <> $FFFFFFFF then
           begin
-            Result := fCount - (Succ(i) * 32) +
-              BSR({$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(not MovingPtr^));
+            Result := fCount - (Succ(i) * 32) + BSR(EndCor(not MovingPtr^));
             Break{For i};
           end;
       end;
