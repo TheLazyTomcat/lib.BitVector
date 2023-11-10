@@ -136,6 +136,8 @@ type
     procedure Assign(Vector: TBitVector); overload; virtual;
     procedure Append(Memory: Pointer; Count: Integer); overload; virtual;
     procedure Append(Vector: TBitVector); overload; virtual;
+    procedure Put(Index: Integer; Memory: Pointer; Count: Integer); overload; virtual;
+    procedure Put(Index: Integer; Vector: TBitVector); overload; virtual;
     procedure Fill(FromIdx, ToIdx: Integer; Value: Boolean); overload; virtual;
     procedure Fill(Value: Boolean); overload; virtual;
     procedure Complement(FromIdx, ToIdx: Integer); overload; virtual;
@@ -213,13 +215,7 @@ implementation
 uses
   Math,
   BitOps, StrRect, BinaryStreaming;
-(*
-{$IFDEF FPC_DisableWarns}
-  {$DEFINE FPCDWM}
-  {$DEFINE W4055:={$WARN 4055 OFF}} // Conversion between ordinals and pointers is not portable
-  {$DEFINE W5057:={$WARN 5057 OFF}} // Local variable "$1" does not seem to be initialized}
-{$ENDIF}
-*)
+
 {===============================================================================
 --------------------------------------------------------------------------------
                                    TBitVector                                   
@@ -908,17 +904,22 @@ procedure TBitVector.Assign(Memory: Pointer; Count: Integer);
 begin
 If MemoryCanBeReallocated or (Count = fCount) then
   begin
-    If Count <> fCount then
-      SetCount(Count);  // also sets fCount
-    // whole bytes
-    System.Move(Memory^,fMemory^,Count shr 3);
-    // remaining bits
-    If (Count and 7) <> 0 then
-      SetBitsValue(GetBytePtrByteIdx(Count shr 3)^,
-                   PByte(PtrAdvance(Memory,PtrInt(Count shr 3)))^,
-                   0,Pred(Count and 7));
-    ScanForPopCount;
-    DoChange;
+    BeginChanging;
+    try
+      If Count <> fCount then
+        SetCount(Count);  // also sets fCount
+      // whole bytes
+      System.Move(Memory^,fMemory^,Count shr 3);
+      // remaining bits
+      If (Count and 7) <> 0 then
+        SetBitsValue(GetBytePtrByteIdx(Count shr 3)^,
+                     PByte(PtrAdvance(Memory,PtrInt(Count shr 3)))^,
+                     0,Pred(Count and 7));
+      ScanForPopCount;
+      DoChange;
+    finally
+      EndChanging;
+    end;
   end
 else raise EBVNonReallocatableMemory.Create('TBitVector.Assign: Memory cannot be reallocated.');
 end;
@@ -935,7 +936,8 @@ end;
 procedure TBitVector.Append(Memory: Pointer; Count: Integer);
 var
   BytesCount:   Integer;
-  Shift:        Integer;
+  RShift:       Integer;
+  LShift:       Integer;
   MovingPtr:    Pointer;
   NextBytePtr:  Pointer;
 begin
@@ -953,22 +955,23 @@ If MemoryCanBeReallocated then
             SetCapacity(Succ(fCount or 7) + Count);
             BytesCount := (Count + 7) shr 3;
             System.Move(Memory^,GetBytePtrByteIdx(Succ(fCount shr 3))^,BytesCount);
-            Shift := 8 - (fCount and 7);
+            LShift := fCount and 7;
+            RShift := 8 - LShift;
             MovingPtr := GetBytePtrBitIdx(HighIndex);
             while BytesCount >= BV_NATINT_BYTES do
               begin
                 NextBytePtr := PtrAdvance(MovingPtr,1);
-                SetBitsValue(PByte(MovingPtr)^,PByte(NextBytePtr)^ shl (8 - Shift),8 - Shift,7);
+                SetBitsValue(PByte(MovingPtr)^,Byte(PByte(NextBytePtr)^ shl LShift),LShift,7);
                 PNativeUInt(NextBytePtr)^ := {$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(
-                  {$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(PNativeUInt(NextBytePtr)^) shr Shift);
+                  {$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(PNativeUInt(NextBytePtr)^) shr RShift);
                 Inc(PNativeUInt(MovingPtr));
                 Dec(BytesCount,BV_NATINT_BYTES);
               end;
             while BytesCount > 0 do
               begin
                 NextBytePtr := PtrAdvance(MovingPtr,1);
-                SetBitsValue(PByte(MovingPtr)^,PByte(NextBytePtr)^ shl (8 - Shift),8 - Shift,7);
-                PByte(NextBytePtr)^ := PByte(NextBytePtr)^ shr Shift;
+                SetBitsValue(PByte(MovingPtr)^,Byte(PByte(NextBytePtr)^ shl LShift),LShift,7);
+                PByte(NextBytePtr)^ := PByte(NextBytePtr)^ shr RShift;
                 Inc(PByte(MovingPtr));
                 Dec(BytesCount);
               end;
@@ -992,6 +995,104 @@ end;
 procedure TBitVector.Append(Vector: TBitVector);
 begin
 Append(Vector.Memory,Vector.Count);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TBitVector.Put(Index: Integer; Memory: Pointer; Count: Integer);
+var
+  LShift:         Integer;
+  RShift:         Integer;
+  MovingPtrSelf:  Pointer;
+  MovingPtr:      Pointer;
+  PartialEndFill: Boolean;
+begin
+If MemoryCanBeReallocated or ((Index + Count) <= fCount) then
+  begin
+    If CheckIndex(Index) or ((fCount <= 0) and (Index = 0)) then
+      begin
+        If Count > 0 then
+          begin
+            BeginChanging;
+            try
+              If Index + Count > fCount then
+                SetCount(Index + Count);
+              If (Index and 7) <> 0 then
+                begin
+                  // complex copy with shift
+                  LShift := Index and 7;
+                  RShift := 8 - LShift;
+                  MovingPtrSelf := GetBytePtrByteIdx(Index shr 3);
+                  MovingPtr := Memory;
+                  PartialEndFill := RShift > (Count and 7);
+                  // full native words
+                  while Count >= BV_NATINT_BITS do
+                    begin
+                      SetBitsValue(PByte(MovingPtrSelf)^,Byte(PByte(MovingPtr)^ shl LShift),LShift,7);
+                      Inc(PByte(MovingPtrSelf));
+                      Dec(Count,BV_NATINT_BITS);
+                      If (Count <= 0) or ((Count < 8{this must be 8!}) and PartialEndFill) then
+                        SetBitsValue(PNativeUInt(MovingPtrSelf)^,PNativeUInt(MovingPtr)^ shr RShift,0,Pred(BV_NATINT_BITS - RShift))
+                      else
+                        PNativeUInt(MovingPtrSelf)^ := NativeUInt(PNativeUInt(MovingPtr)^ shr RShift); 
+                      Inc(PNativeUInt(MovingPtr));
+                      Inc(PByte(MovingPtrSelf),Pred(BV_NATINT_BYTES));
+                    end;
+                  // full bytes
+                  while Count >= 8 do
+                    begin
+                      SetBitsValue(PByte(MovingPtrSelf)^,Byte(PByte(MovingPtr)^ shl LShift),LShift,7);
+                      Inc(PByte(MovingPtrSelf));
+                      Dec(Count,8);
+                      If (Count <= 0) or ((Count < 8) and PartialEndFill) then
+                        SetBitsValue(PByte(MovingPtrSelf)^,PByte(MovingPtr)^ shr RShift,0,Pred(LShift))
+                      else
+                        PByte(MovingPtrSelf)^ := Byte(PByte(MovingPtr)^ shr RShift);
+                      Inc(PByte(MovingPtr));
+                    end;
+                  // trailing bits
+                  If Count <> 0 then
+                    begin
+                      If not PartialEndFill then
+                        begin
+                          SetBitsValue(PByte(MovingPtrSelf)^,Byte(PByte(MovingPtr)^ shl LShift),LShift,7);
+                          Dec(Count,RShift);
+                          If Count > 0 then
+                            begin
+                              Inc(PByte(MovingPtrSelf));
+                              SetBitsValue(PByte(MovingPtrSelf)^,PByte(MovingPtr)^ shr RShift,0,Pred(Count));
+                            end;
+                        end
+                      else SetBitsValue(PByte(MovingPtrSelf)^,Byte(PByte(MovingPtr)^ shl LShift),LShift,Pred(LShift + Count));
+                    end;
+                end
+              else
+                begin
+                  // simple copy, no shift needed, copy integral bytes
+                  System.Move(Memory^,GetBytePtrByteIdx(Index shr 3)^,Count shr 3);
+                  // and now the remaining bits
+                  If (Count and 7) <> 0 then
+                    SetBitsValue(GetBytePtrByteIdx((Index + Count) shr 3)^,
+                                 PByte(PtrAdvance(Memory,PtrInt(Count shr 3)))^,
+                                 0,Pred(Count and 7));
+                end;
+              ScanForPopCount;
+              DoChange;
+            finally
+              EndChanging;
+            end;
+          end;
+      end
+    else raise EBVIndexOutOfBounds.CreateFmt('TBitVector.Put: Index (%d) out of bounds.',[Index]);
+  end
+else raise EBVNonReallocatableMemory.Create('TBitVector.Put: Memory cannot be reallocated.');
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure TBitVector.Put(Index: Integer; Vector: TBitVector);
+begin
+Put(Index,Vector.Memory,Vector.Count);
 end;
 
 //------------------------------------------------------------------------------
