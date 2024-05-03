@@ -48,10 +48,10 @@
   Library AuxExceptions might also be required as an indirect dependency.
 
   Indirect dependencies:
+    BasicUIM    - github.com/TheLazyTomcat/Lib.BasicUIM
     SimpleCPUID - github.com/TheLazyTomcat/Lib.SimpleCPUID
     UInt64Utils - github.com/TheLazyTomcat/Lib.UInt64Utils
     WinFileInfo - github.com/TheLazyTomcat/Lib.WinFileInfo
-    BasicUIM    - github.com/TheLazyTomcat/Lib.BasicUIM
 
 ===============================================================================}
 unit BitVector;
@@ -61,11 +61,11 @@ unit BitVector;
   If you want library-specific exceptions to be based on more advanced classes
   provided by AuxExceptions library instead of basic Exception class, and don't
   want to or cannot change code in this unit, you can define global symbol
-  BasicUIM_UseAuxExceptions to achieve this.
+  BitVector_UseAuxExceptions to achieve this.
 }
 {$IF Defined(BitVector_UseAuxExceptions)}
   {$DEFINE UseAuxExceptions}
-{$IFEND}{$DEFINE UseAuxExceptions}
+{$IFEND}
 
 //------------------------------------------------------------------------------ 
 
